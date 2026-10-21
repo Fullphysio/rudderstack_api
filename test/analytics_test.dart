@@ -1,5 +1,7 @@
 // Fire-and-forget event calls are a supported use, exercised on purpose.
 // ignore_for_file: unawaited_futures
+@TestOn('vm')
+library;
 
 import 'dart:async';
 import 'dart:convert';

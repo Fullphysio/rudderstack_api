@@ -9,6 +9,9 @@ on:
     # Weekly, to catch breakage from new SDK or dependency releases.
     - cron: '0 6 * * 1'
 
+permissions:
+  contents: read
+
 env:
   PUB_ENVIRONMENT: bot.github
 
@@ -51,7 +54,7 @@ jobs:
         run: dart pub get
       - name: Run tests
         if: always() && steps.install.outcome == 'success'
-        run: dart test --test-randomize-ordering-seed=random
+        run: dart test -p vm -p chrome --test-randomize-ordering-seed=random
 
   score:
     name: pub.dev score

@@ -6,5 +6,9 @@
 library;
 
 export 'src/analytics.dart'
-    show RetryDelay, RudderAnalytics, RudderStackErrorHandler;
+    show
+        RetryDelay,
+        RudderAnalytics,
+        RudderStackErrorHandler,
+        defaultRetryDelay;
 export 'src/exceptions.dart';
