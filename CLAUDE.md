@@ -21,6 +21,9 @@ Three tiers:
 - **Mock server** (`test/mock_server_test.dart`) — a real `HttpServer` on
   loopback with the default `http.Client`: gzip, headers and timeouts on the
   wire. Part of the default run.
+- **Browser** (`test/web_test.dart`) — `dart test -p chrome` compiles the
+  package with dart2js and exercises `platform_stub.dart`. CI runs it; the
+  other test files are `@TestOn('vm')` because they import `dart:io`.
 - **Integration** (`test/integration/`) — hits a live data plane. Tagged
   `integration` and skipped by default (see `dart_test.yaml`). Run them with:
 

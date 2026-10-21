@@ -7,7 +7,11 @@ A pure Dart server-side SDK for [RudderStack](https://www.rudderstack.com). Send
 
 **No Flutter dependency.** The official `rudder_sdk_flutter` declares the Flutter SDK, which pub refuses to resolve inside a plain Dart project, and is built for devices, not servers. This one is a port of the official Node.js server SDK.
 
-Built by [Fullphysio](https://www.fullphysio.com) for its Dart Cloud Functions. Bug reports are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Built by [Fullphysio](https://www.fullphysio.com) for its Dart Cloud Functions. Bug reports are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). This is an independent project, not affiliated with or endorsed by RudderStack.
+
+```
+dart pub add rudderstack_api
+```
 
 ```dart
 import 'package:rudderstack_api/rudderstack_api.dart';
