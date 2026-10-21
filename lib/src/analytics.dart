@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 
 import 'exceptions.dart';
 import 'platform_stub.dart' if (dart.library.io) 'platform_io.dart';
@@ -14,6 +13,8 @@ typedef RetryDelay = Duration Function(int retryNumber);
 
 /// Receives every batch that could not be delivered.
 typedef RudderStackErrorHandler = void Function(RudderStackException error);
+
+const Duration _maxRetryAfter = Duration(seconds: 30);
 
 /// The default [RetryDelay]: 200 ms, 400 ms, 800 ms… plus up to 20 % jitter.
 ///
@@ -33,22 +34,27 @@ const String _libraryName = 'rudderstack_api';
 /// A RudderStack server-side client: queues events and delivers them in
 /// batches to the data plane's `/v1/batch` endpoint.
 ///
-/// Create one per process and reuse it. Calls such as [track] return
-/// immediately; delivery happens in the background once [flushAt] events are
-/// queued, [maxBatchBytes] is reached, or [flushInterval] elapses.
+/// Create one per process and reuse it. Calls such as [track] queue the event
+/// and return at once; delivery happens in the background once [flushAt]
+/// events are queued, [maxBatchBytes] is reached, or [flushInterval] elapses.
+///
+/// Each call returns a future that completes when that event is delivered, or
+/// fails with a [RudderStackException] when its batch is rejected — the Dart
+/// form of the Node SDK's per-message callback. Not awaiting it is safe: the
+/// failure then only reaches [onError].
 ///
 /// On a server that may be frozen or recycled between requests — Cloud Run,
-/// Cloud Functions — `await` [flush] before the request returns. It sends
-/// everything still queued, waits for batches already in flight, and throws a
-/// [RudderStackException] if any batch failed since the previous flush.
+/// Cloud Functions — `await` [flush] before the request returns, then the
+/// futures of the events that request recorded:
 ///
 /// ```dart
 /// final analytics = RudderAnalytics(
 ///   'WRITE_KEY',
 ///   dataPlaneUrl: Uri.parse('https://example.dataplane.rudderstack.com'),
 /// );
-/// analytics.track(userId: 'user-1', event: 'Order Completed');
+/// final delivered = analytics.track(userId: 'user-1', event: 'Order Completed');
 /// await analytics.flush();
+/// await delivered;
 /// ```
 class RudderAnalytics {
   /// Creates a client for the source identified by [writeKey], sending to
@@ -57,12 +63,12 @@ class RudderAnalytics {
   /// Throws an [ArgumentError] when [writeKey] is empty, [dataPlaneUrl] is not
   /// an absolute `http` or `https` URL, or a numeric option is out of range.
   RudderAnalytics(
-    this.writeKey, {
+    String writeKey, {
     required Uri dataPlaneUrl,
     this.flushAt = 20,
     this.flushInterval = const Duration(seconds: 10),
     this.maxBatchBytes = 450 * 1024,
-    this.maxQueueSize = 20000,
+    this.maxPendingEvents = 20000,
     this.retryCount = 3,
     this.retryDelay = defaultRetryDelay,
     this.timeout = const Duration(seconds: 10),
@@ -70,7 +76,8 @@ class RudderAnalytics {
     this.enabled = true,
     this.onError,
     http.Client? httpClient,
-  })  : batchUrl = _batchUrl(dataPlaneUrl),
+  })  : _writeKey = writeKey,
+        _url = _batchUrl(dataPlaneUrl),
         _httpClient = httpClient ?? http.Client(),
         _ownsClient = httpClient == null {
     if (writeKey.isEmpty) {
@@ -78,7 +85,7 @@ class RudderAnalytics {
     }
     _checkPositive(flushAt, 'flushAt');
     _checkPositive(maxBatchBytes, 'maxBatchBytes');
-    _checkPositive(maxQueueSize, 'maxQueueSize');
+    _checkPositive(maxPendingEvents, 'maxPendingEvents');
     if (retryCount < 0) {
       throw ArgumentError.value(
           retryCount, 'retryCount', 'must not be negative');
@@ -91,12 +98,6 @@ class RudderAnalytics {
       throw ArgumentError.value(timeout, 'timeout', 'must be positive');
     }
   }
-
-  /// The source's write key, sent as the Basic auth user name.
-  final String writeKey;
-
-  /// The endpoint batches are posted to: `<dataPlaneUrl>/v1/batch`.
-  final Uri batchUrl;
 
   /// How many queued events trigger a background flush. Also the largest
   /// number of events sent in one request.
@@ -114,13 +115,17 @@ class RudderAnalytics {
 
   /// How many events may be waiting or in flight at once. Further events are
   /// dropped and reported as failures until the backlog drains.
-  final int maxQueueSize;
+  ///
+  /// The Node SDK calls this `maxInternalQueueSize`; its `maxQueueSize` is a
+  /// size in bytes, which is [maxBatchBytes] here.
+  final int maxPendingEvents;
 
   /// How many times a failed request is retried. Connection errors, `429`
   /// and `5xx` responses are retried; timeouts and other statuses are not.
   final int retryCount;
 
-  /// The pause before each retry. A longer `Retry-After` header wins.
+  /// The pause before each retry. A longer `Retry-After` header, in seconds
+  /// and capped at 30 s, wins.
   final RetryDelay retryDelay;
 
   /// Deadline of a single HTTP attempt.
@@ -133,10 +138,12 @@ class RudderAnalytics {
   /// When `false`, calls are validated but nothing is queued or sent.
   final bool enabled;
 
-  /// Called with every batch that could not be delivered, in addition to the
-  /// failure being reported by the next [flush].
+  /// Called once for every batch that could not be delivered, whether or not
+  /// the futures of its events are awaited.
   final RudderStackErrorHandler? onError;
 
+  final String _writeKey;
+  final Uri _url;
   final http.Client _httpClient;
   final bool _ownsClient;
   final List<_QueuedMessage> _queue = [];
@@ -145,14 +152,13 @@ class RudderAnalytics {
   Timer? _timer;
   Future<void> _inFlight = Future.value();
   bool _closed = false;
-  RudderStackException? _firstFailure;
-  int _failedBatches = 0;
-  int _failedEvents = 0;
 
   /// Records who a user is and the [traits] that describe them.
   ///
   /// The traits are sent both at the top level and as `context.traits`.
-  void identify({
+  /// Returns a future for the event's delivery, as described on
+  /// [RudderAnalytics].
+  Future<void> identify({
     String? userId,
     String? anonymousId,
     Map<String, Object?>? traits,
@@ -162,7 +168,7 @@ class RudderAnalytics {
     String? messageId,
   }) {
     _requireIdentity(userId, anonymousId);
-    _enqueue(
+    return _enqueue(
         'identify',
         {
           'userId': userId,
@@ -179,7 +185,7 @@ class RudderAnalytics {
   }
 
   /// Records that a user performed [event].
-  void track({
+  Future<void> track({
     required String event,
     String? userId,
     String? anonymousId,
@@ -191,7 +197,7 @@ class RudderAnalytics {
   }) {
     _requireIdentity(userId, anonymousId);
     _require(event, 'You must pass an "event".');
-    _enqueue(
+    return _enqueue(
         'track',
         {
           'userId': userId,
@@ -206,7 +212,7 @@ class RudderAnalytics {
   }
 
   /// Records that a user viewed a web page.
-  void page({
+  Future<void> page({
     String? name,
     String? category,
     String? userId,
@@ -218,7 +224,7 @@ class RudderAnalytics {
     String? messageId,
   }) {
     _requireIdentity(userId, anonymousId);
-    _enqueue(
+    return _enqueue(
         'page',
         {
           'userId': userId,
@@ -234,7 +240,7 @@ class RudderAnalytics {
   }
 
   /// Records that a user viewed a mobile app screen.
-  void screen({
+  Future<void> screen({
     String? name,
     String? userId,
     String? anonymousId,
@@ -245,7 +251,7 @@ class RudderAnalytics {
     String? messageId,
   }) {
     _requireIdentity(userId, anonymousId);
-    _enqueue(
+    return _enqueue(
         'screen',
         {
           'userId': userId,
@@ -260,7 +266,7 @@ class RudderAnalytics {
   }
 
   /// Associates a user with the group [groupId], such as a company or team.
-  void group({
+  Future<void> group({
     required String groupId,
     String? userId,
     String? anonymousId,
@@ -272,7 +278,7 @@ class RudderAnalytics {
   }) {
     _requireIdentity(userId, anonymousId);
     _require(groupId, 'You must pass a "groupId".');
-    _enqueue(
+    return _enqueue(
         'group',
         {
           'userId': userId,
@@ -287,7 +293,7 @@ class RudderAnalytics {
   }
 
   /// Merges the identity [previousId] into [userId].
-  void alias({
+  Future<void> alias({
     required String userId,
     required String previousId,
     Map<String, Object?>? context,
@@ -297,7 +303,7 @@ class RudderAnalytics {
   }) {
     _require(userId, 'You must pass a "userId".');
     _require(previousId, 'You must pass a "previousId".');
-    _enqueue(
+    return _enqueue(
         'alias',
         {
           'userId': userId,
@@ -312,15 +318,16 @@ class RudderAnalytics {
   /// Sends every queued event and waits until all batches, including those
   /// already in flight, have been delivered or have failed.
   ///
-  /// Throws a [RudderStackException] when any batch failed since the
-  /// previous call. Failed events are not re-queued. Throws a [StateError]
-  /// after [shutdown].
+  /// Never throws for a failed delivery: that is reported through the future
+  /// each event call returned, and [onError]. Failed events are not
+  /// re-queued. Throws a [StateError] after [shutdown].
   Future<void> flush() {
     _ensureOpen();
     return _flush();
   }
 
   /// Flushes, then releases the HTTP client if this instance created it.
+  /// Like [flush], it does not throw for failed deliveries.
   ///
   /// Events recorded afterwards throw a [StateError]. Calling it again is a
   /// no-op.
@@ -334,27 +341,27 @@ class RudderAnalytics {
     }
   }
 
-  Future<void> _flush() async {
+  Future<void> _flush() {
     _drain();
-    await _inFlight;
-    _throwFailures();
+    return _inFlight;
   }
 
-  void _enqueue(
+  Future<void> _enqueue(
     String type,
     Map<String, Object?> fields, {
     required Map<String, Object?>? context,
     required String? messageId,
   }) {
     _ensureOpen();
-    if (!enabled) return;
-    if (_backlog >= maxQueueSize) {
-      _recordFailure(RudderStackException(
-        'Dropped a "$type" event: $maxQueueSize events are already waiting '
+    if (!enabled) return Future.value();
+    if (_backlog >= maxPendingEvents) {
+      final dropped = RudderStackException(
+        'Dropped a "$type" event: $maxPendingEvents events are already waiting '
         'or in flight.',
         eventCount: 1,
-      ));
-      return;
+      );
+      _reportToHandler(dropped);
+      return Future<void>.error(dropped)..ignore();
     }
     final message = <String, Object?>{
       for (final entry in fields.entries)
@@ -378,6 +385,7 @@ class RudderAnalytics {
     } else if (flushInterval > Duration.zero) {
       _timer ??= Timer(flushInterval, _drain);
     }
+    return queued.delivered.future..ignore();
   }
 
   void _drain() {
@@ -408,14 +416,20 @@ class RudderAnalytics {
         '"timestamp":$sentAt,"sentAt":$sentAt}',
       );
       await _post(gzip && supportsGzip ? gzipEncode(body) : body, batch.length);
+      for (final message in batch) {
+        message.delivered.complete();
+      }
     } on RudderStackException catch (error) {
-      _recordFailure(error);
+      _fail(batch, error);
     } on Object catch (error) {
-      _recordFailure(RudderStackException(
-        'Could not send ${batch.length} events: $error',
-        cause: error,
-        eventCount: batch.length,
-      ));
+      _fail(
+        batch,
+        RudderStackException(
+          'Could not send ${batch.length} events: $error',
+          cause: error,
+          eventCount: batch.length,
+        ),
+      );
     } finally {
       _backlog -= batch.length;
     }
@@ -423,7 +437,7 @@ class RudderAnalytics {
 
   Future<void> _post(List<int> body, int eventCount) async {
     final headers = {
-      'Authorization': 'Basic ${base64Encode(utf8.encode('$writeKey:'))}',
+      'Authorization': 'Basic ${base64Encode(utf8.encode('$_writeKey:'))}',
       'Content-Type': 'application/json',
       if (gzip && supportsGzip) 'Content-Encoding': 'gzip',
       if (supportsUserAgent) 'User-Agent': '$_libraryName/$packageVersion',
@@ -436,7 +450,7 @@ class RudderAnalytics {
         response = await _attempt(body, headers);
       } on _AttemptTimedOut catch (timedOut) {
         throw RudderStackException(
-          'POST $batchUrl timed out after ${timeout.inMilliseconds} ms',
+          'POST $_url timed out after ${timeout.inMilliseconds} ms',
           cause: timedOut.cause,
           eventCount: eventCount,
         );
@@ -457,13 +471,13 @@ class RudderAnalytics {
       final attempts = retries == 0 ? '' : ' after ${retries + 1} attempts';
       if (response == null) {
         throw RudderStackException(
-          'POST $batchUrl failed$attempts: $transportError',
+          'POST $_url failed$attempts: $transportError',
           cause: transportError,
           eventCount: eventCount,
         );
       }
       throw RudderStackException(
-        'POST $batchUrl returned ${response.statusCode}'
+        'POST $_url returned ${response.statusCode}'
         '${response.reasonPhrase == null ? '' : ' ${response.reasonPhrase}'}'
         '$attempts',
         statusCode: response.statusCode,
@@ -482,7 +496,7 @@ class RudderAnalytics {
     try {
       final request = http.AbortableRequest(
         'POST',
-        batchUrl,
+        _url,
         abortTrigger: abort.future,
       )
         ..headers.addAll(headers)
@@ -502,14 +516,18 @@ class RudderAnalytics {
     final computed = retryDelay(retryNumber);
     final header = response?.headers['retry-after'];
     if (header == null) return computed;
-    final retryAfter = _parseRetryAfter(header);
+    final retryAfter = parseRetryAfter(header);
     return retryAfter != null && retryAfter > computed ? retryAfter : computed;
   }
 
-  void _recordFailure(RudderStackException error) {
-    _firstFailure ??= error;
-    _failedBatches++;
-    _failedEvents += error.eventCount;
+  void _fail(List<_QueuedMessage> batch, RudderStackException error) {
+    _reportToHandler(error);
+    for (final message in batch) {
+      message.delivered.completeError(error);
+    }
+  }
+
+  void _reportToHandler(RudderStackException error) {
     final handler = onError;
     if (handler == null) return;
     try {
@@ -517,25 +535,6 @@ class RudderAnalytics {
     } on Object catch (handlerError, stackTrace) {
       Zone.current.handleUncaughtError(handlerError, stackTrace);
     }
-  }
-
-  void _throwFailures() {
-    final first = _firstFailure;
-    if (first == null) return;
-    final batches = _failedBatches;
-    final events = _failedEvents;
-    _firstFailure = null;
-    _failedBatches = 0;
-    _failedEvents = 0;
-    if (batches == 1) throw first;
-    throw RudderStackException(
-      '$batches deliveries ($events events) failed since the last flush. '
-      'First failure: ${first.message}',
-      statusCode: first.statusCode,
-      responseBody: first.responseBody,
-      cause: first,
-      eventCount: events,
-    );
   }
 
   void _ensureOpen() {
@@ -583,23 +582,21 @@ String formatTimestamp(DateTime time) {
 
 Object? _toEncodable(Object? value) {
   if (value is DateTime) return formatTimestamp(value);
+  if (value is double && !value.isFinite) return null;
   // ignore: avoid_dynamic_calls
   return (value as dynamic).toJson();
 }
 
-Duration? _parseRetryAfter(String header) {
-  final seconds = num.tryParse(header.trim());
-  if (seconds != null) {
-    return seconds > 0
-        ? Duration(milliseconds: (seconds * 1000).round())
-        : Duration.zero;
-  }
-  try {
-    final wait = parseHttpDate(header).difference(DateTime.now());
-    return wait.isNegative ? Duration.zero : wait;
-  } on FormatException {
-    return null;
-  }
+/// Reads a `Retry-After` header given in seconds, capped at 30 s.
+///
+/// Returns `null` for anything else, including an HTTP date or a non-finite
+/// number, so the computed backoff applies instead.
+Duration? parseRetryAfter(String header) {
+  final seconds = double.tryParse(header.trim());
+  if (seconds == null || !seconds.isFinite) return null;
+  if (seconds <= 0) return Duration.zero;
+  final wait = Duration(milliseconds: (seconds * 1000).round());
+  return wait > _maxRetryAfter ? _maxRetryAfter : wait;
 }
 
 String _uuidV4() {
@@ -618,6 +615,7 @@ class _QueuedMessage {
 
   final String json;
   final int bytes;
+  final Completer<void> delivered = Completer<void>();
 
   String withSentAt(String sentAtJson) =>
       '${json.substring(0, json.length - 1)},"sentAt":$sentAtJson}';

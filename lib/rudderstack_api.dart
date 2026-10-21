@@ -6,11 +6,5 @@
 library;
 
 export 'src/analytics.dart'
-    show
-        RetryDelay,
-        RudderAnalytics,
-        RudderStackErrorHandler,
-        defaultRetryDelay,
-        formatTimestamp;
+    show RetryDelay, RudderAnalytics, RudderStackErrorHandler;
 export 'src/exceptions.dart';
-export 'src/version.dart';

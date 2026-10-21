@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:rudderstack_api/rudderstack_api.dart';
+import 'package:rudderstack_api/src/version.dart';
 import 'package:test/test.dart';
 
 void main() {

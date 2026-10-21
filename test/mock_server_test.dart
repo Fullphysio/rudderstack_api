@@ -1,3 +1,5 @@
+// Fire-and-forget event calls are a supported use, exercised on purpose.
+// ignore_for_file: unawaited_futures
 @TestOn('vm')
 library;
 
@@ -6,6 +8,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:rudderstack_api/rudderstack_api.dart';
+import 'package:rudderstack_api/src/version.dart';
 import 'package:test/test.dart';
 
 /// Runs the client against a real HTTP server on the loopback interface, with
@@ -62,9 +65,11 @@ void main() {
         ..statusCode = 401
         ..write('invalid write key');
     };
-    final analytics = client()..track(userId: 'u', event: 'E');
+    final analytics = client();
+    final delivered = analytics.track(userId: 'u', event: 'E');
+    await analytics.flush();
     await expectLater(
-      analytics.flush(),
+      delivered,
       throwsA(isA<RudderStackException>()
           .having((e) => e.statusCode, 'statusCode', 401)
           .having((e) => e.responseBody, 'responseBody', 'invalid write key')),
@@ -75,10 +80,11 @@ void main() {
   test('abandons a request that outlives the timeout', () async {
     final hang = Completer<void>();
     respond = (_) => hang.future;
-    final analytics = client(timeout: const Duration(milliseconds: 200))
-      ..track(userId: 'u', event: 'E');
+    final analytics = client(timeout: const Duration(milliseconds: 200));
+    final delivered = analytics.track(userId: 'u', event: 'E');
     final stopwatch = Stopwatch()..start();
-    await expectLater(analytics.flush(), throwsA(isA<RudderStackException>()));
+    await analytics.flush();
+    await expectLater(delivered, throwsA(isA<RudderStackException>()));
     expect(stopwatch.elapsed, lessThan(const Duration(seconds: 2)));
     hang.complete();
     await analytics.shutdown();

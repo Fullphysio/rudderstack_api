@@ -9,19 +9,21 @@ Future<void> main() async {
         Uri.parse(Platform.environment['RUDDERSTACK_DATA_PLANE_URL']!),
   );
 
-  analytics
-    ..identify(
+  final delivered = [
+    analytics.identify(
       userId: 'user-42',
       traits: {'email': 'jane@example.com', 'plan': 'pro'},
-    )
-    ..track(
+    ),
+    analytics.track(
       userId: 'user-42',
       event: 'Order Completed',
       properties: {'revenue': 49.9, 'currency': 'EUR'},
-    );
+    ),
+  ];
 
+  await analytics.flush();
   try {
-    await analytics.flush();
+    await Future.wait(delivered);
   } on RudderStackException catch (error) {
     stderr.writeln('${error.eventCount} events were not delivered: $error');
   } finally {

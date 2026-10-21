@@ -31,24 +31,29 @@ void main() {
 
   test('delivers one event of every type in a gzip batch', () async {
     const anonymousId = 'rudderstack_api-integration-test';
-    final analytics = client(writeKey)
-      ..identify(anonymousId: anonymousId, traits: {'test': true})
-      ..track(
+    final analytics = client(writeKey);
+    final delivered = [
+      analytics.identify(anonymousId: anonymousId, traits: {'test': true}),
+      analytics.track(
         anonymousId: anonymousId,
         event: 'rudderstack_api integration test',
         properties: {'at': DateTime.now()},
-      )
-      ..page(anonymousId: anonymousId, name: 'Integration')
-      ..screen(anonymousId: anonymousId, name: 'Integration')
-      ..group(anonymousId: anonymousId, groupId: 'rudderstack_api-test');
+      ),
+      analytics.page(anonymousId: anonymousId, name: 'Integration'),
+      analytics.screen(anonymousId: anonymousId, name: 'Integration'),
+      analytics.group(
+          anonymousId: anonymousId, groupId: 'rudderstack_api-test'),
+    ];
     await analytics.shutdown();
+    await Future.wait(delivered);
   });
 
   test('rejects an invalid write key with 401', () async {
-    final analytics = client('invalid-write-key')
-      ..track(anonymousId: 'a', event: 'E');
+    final analytics = client('invalid-write-key');
+    final delivered = analytics.track(anonymousId: 'a', event: 'E');
+    await analytics.flush();
     await expectLater(
-      analytics.flush(),
+      delivered,
       throwsA(isA<RudderStackException>()
           .having((e) => e.statusCode, 'statusCode', 401)),
     );

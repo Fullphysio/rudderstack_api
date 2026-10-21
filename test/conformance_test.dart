@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:rudderstack_api/rudderstack_api.dart';
+import 'package:rudderstack_api/src/version.dart';
 import 'package:test/test.dart';
 
 import '_support/recording_client.dart';
@@ -185,13 +186,14 @@ void main() {
         final golden = raw! as Map<String, Object?>;
         final statuses = (golden['statuses']! as List).cast<int>();
         final http = RecordingClient(statuses: statuses);
-        final analytics = _client(http)..track(userId: 'u', event: 'E');
+        final analytics = _client(http);
+        final delivered = analytics.track(userId: 'u', event: 'E');
 
-        final flush = analytics.flush();
+        await analytics.flush();
         if (golden['threw'] == true) {
-          await expectLater(flush, throwsA(isA<RudderStackException>()));
+          await expectLater(delivered, throwsA(isA<RudderStackException>()));
         } else {
-          await flush;
+          await delivered;
         }
         expect(http.requests, hasLength(golden['attempts']));
         final ids = {

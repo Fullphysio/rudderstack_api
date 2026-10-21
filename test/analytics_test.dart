@@ -1,9 +1,15 @@
+// Fire-and-forget event calls are a supported use, exercised on purpose.
+// ignore_for_file: unawaited_futures
+
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:rudderstack_api/rudderstack_api.dart';
+import 'package:rudderstack_api/src/analytics.dart'
+    show defaultRetryDelay, formatTimestamp, parseRetryAfter;
 import 'package:test/test.dart';
 
 import '_support/recording_client.dart';
@@ -13,7 +19,7 @@ RudderAnalytics _client(
   int flushAt = 20,
   Duration flushInterval = Duration.zero,
   int maxBatchBytes = 450 * 1024,
-  int maxQueueSize = 20000,
+  int maxPendingEvents = 20000,
   int retryCount = 3,
   Duration timeout = const Duration(seconds: 10),
   bool gzip = true,
@@ -26,7 +32,7 @@ RudderAnalytics _client(
       flushAt: flushAt,
       flushInterval: flushInterval,
       maxBatchBytes: maxBatchBytes,
-      maxQueueSize: maxQueueSize,
+      maxPendingEvents: maxPendingEvents,
       retryCount: retryCount,
       retryDelay: (_) => Duration.zero,
       timeout: timeout,
@@ -36,18 +42,22 @@ RudderAnalytics _client(
       httpClient: httpClient,
     );
 
-void _trackMany(RudderAnalytics analytics, int count) {
-  for (var i = 0; i < count; i++) {
-    analytics.track(userId: 'u', event: 'E$i');
-  }
-}
+List<Future<void>> _trackMany(RudderAnalytics analytics, int count) => [
+      for (var i = 0; i < count; i++)
+        analytics.track(userId: 'u', event: 'E$i'),
+    ];
 
 void main() {
   group('constructor', () {
-    test('posts to <dataPlaneUrl>/v1/batch, ignoring trailing slashes', () {
+    test('posts to <dataPlaneUrl>/v1/batch, ignoring trailing slashes',
+        () async {
+      final http = RecordingClient();
       final analytics = RudderAnalytics('key',
-          dataPlaneUrl: Uri.parse('https://dp.example.com/proxy//'));
-      expect(analytics.batchUrl.toString(),
+          dataPlaneUrl: Uri.parse('https://dp.example.com/proxy//'),
+          httpClient: http);
+      analytics.track(userId: 'u', event: 'E');
+      await analytics.flush();
+      expect(http.requests.single.request.url.toString(),
           'https://dp.example.com/proxy/v1/batch');
     });
 
@@ -185,6 +195,19 @@ void main() {
       expect(http.messages.single['timestamp'], '2026-01-31T09:05:03.042Z');
     });
 
+    test('encodes NaN and Infinity as null, as JSON.stringify does', () async {
+      final http = RecordingClient();
+      final analytics = _client(http);
+      analytics.track(
+        userId: 'u',
+        event: 'E',
+        properties: {'nan': double.nan, 'inf': double.infinity, 'n': 1.5},
+      );
+      await analytics.flush();
+      expect(http.messages.single['properties'],
+          {'nan': null, 'inf': null, 'n': 1.5});
+    });
+
     test('throws at the call site for a value JSON cannot encode', () {
       final analytics = _client(RecordingClient());
       expect(
@@ -222,47 +245,64 @@ void main() {
   });
 
   group('failures', () {
-    test('flush throws once, then the slate is clean', () async {
+    test('the event future fails with its batch, flush does not throw',
+        () async {
       final http = RecordingClient(statuses: [400, 200]);
       final analytics = _client(http);
-      analytics.track(userId: 'u', event: 'E');
+      final rejected = analytics.track(userId: 'u', event: 'E');
+      await analytics.flush();
       await expectLater(
-        analytics.flush(),
+        rejected,
         throwsA(isA<RudderStackException>()
             .having((e) => e.statusCode, 'statusCode', 400)
             .having((e) => e.responseBody, 'responseBody', 'error')
             .having((e) => e.eventCount, 'eventCount', 1)),
       );
-      analytics.track(userId: 'u', event: 'E');
+      final accepted = analytics.track(userId: 'u', event: 'E');
       await analytics.flush();
+      await accepted;
     });
 
-    test('a background failure is reported by the next flush', () async {
+    test('a caller only sees the failure of its own events', () async {
+      final analytics = _client(
+        MockClient((request) async {
+          final body = utf8.decode(gzip.decode(request.bodyBytes));
+          return http.Response('', body.contains('"B"') ? 400 : 200);
+        }),
+        flushAt: 1,
+      );
+      final fromA = analytics.track(userId: 'a', event: 'A');
+      final fromB = analytics.track(userId: 'b', event: 'B');
+      await analytics.flush();
+      await fromA;
+      await expectLater(fromB, throwsA(isA<RudderStackException>()));
+    });
+
+    test('an unawaited failure reaches onError without escaping', () async {
+      final errors = <RudderStackException>[];
+      final analytics =
+          _client(RecordingClient(statuses: [400]), onError: errors.add);
+      _trackMany(analytics, 3);
+      await analytics.flush();
+      expect(errors.single.eventCount, 3);
+    });
+
+    test('a background failure fails the events it carried', () async {
       final http = RecordingClient(statuses: [500, 500, 500, 500, 200]);
       final analytics = _client(http, flushAt: 2);
-      _trackMany(analytics, 2);
+      final first = _trackMany(analytics, 2);
       await pumpEventQueue();
       expect(http.requests, hasLength(4));
-
-      await expectLater(
-          analytics.flush(),
-          throwsA(isA<RudderStackException>()
-              .having((e) => e.statusCode, 'statusCode', 500)
-              .having((e) => e.eventCount, 'eventCount', 2)));
-    });
-
-    test('several failures are summed into one exception', () async {
-      final http = RecordingClient(statuses: [400]);
-      final errors = <RudderStackException>[];
-      final analytics = _client(http, flushAt: 2, onError: errors.add);
-      _trackMany(analytics, 5);
-      await expectLater(
-        analytics.flush(),
-        throwsA(isA<RudderStackException>()
-            .having((e) => e.eventCount, 'eventCount', 5)
-            .having((e) => e.message, 'message', contains('3 deliveries'))),
-      );
-      expect(errors, hasLength(3));
+      for (final delivered in first) {
+        await expectLater(
+            delivered,
+            throwsA(isA<RudderStackException>()
+                .having((e) => e.statusCode, 'statusCode', 500)
+                .having((e) => e.eventCount, 'eventCount', 2)));
+      }
+      final next = analytics.track(userId: 'u', event: 'E');
+      await analytics.flush();
+      await next;
     });
 
     test('retries connection errors', () async {
@@ -271,8 +311,9 @@ void main() {
         if (++calls < 3) throw http.ClientException('reset');
         return http.Response('OK', 200);
       }));
-      analytics.track(userId: 'u', event: 'E');
+      final delivered = analytics.track(userId: 'u', event: 'E');
       await analytics.flush();
+      await delivered;
       expect(calls, 3);
     });
 
@@ -285,9 +326,10 @@ void main() {
         }),
         retryCount: 1,
       );
-      analytics.track(userId: 'u', event: 'E');
+      final delivered = analytics.track(userId: 'u', event: 'E');
+      await analytics.flush();
       await expectLater(
-        analytics.flush(),
+        delivered,
         throwsA(isA<RudderStackException>()
             .having((e) => e.statusCode, 'statusCode', isNull)
             .having((e) => e.cause, 'cause', isA<http.ClientException>())),
@@ -305,9 +347,10 @@ void main() {
         }),
         timeout: const Duration(milliseconds: 20),
       );
-      analytics.track(userId: 'u', event: 'E');
+      final delivered = analytics.track(userId: 'u', event: 'E');
+      await analytics.flush();
       await expectLater(
-        analytics.flush(),
+        delivered,
         throwsA(isA<RudderStackException>()
             .having((e) => e.message, 'message', contains('timed out'))),
       );
@@ -318,21 +361,33 @@ void main() {
       final http = RecordingClient(
           statuses: [429, 200], headers: {'retry-after': '0.2'});
       final analytics = _client(http);
-      analytics.track(userId: 'u', event: 'E');
+      final delivered = analytics.track(userId: 'u', event: 'E');
       final stopwatch = Stopwatch()..start();
       await analytics.flush();
+      await delivered;
       expect(stopwatch.elapsedMilliseconds, greaterThanOrEqualTo(190));
       expect(http.requests, hasLength(2));
     });
 
-    test('drops events beyond maxQueueSize and reports them', () async {
+    test('a non-finite Retry-After falls back to the backoff', () async {
+      final http = RecordingClient(
+          statuses: [503, 200], headers: {'retry-after': 'Infinity'});
+      final analytics = _client(http);
+      final delivered = analytics.track(userId: 'u', event: 'E');
+      await analytics.flush();
+      await delivered;
+      expect(http.requests, hasLength(2));
+    });
+
+    test('drops events beyond maxPendingEvents and reports them', () async {
       final http = RecordingClient();
       final errors = <RudderStackException>[];
-      final analytics = _client(http, maxQueueSize: 2, onError: errors.add);
-      _trackMany(analytics, 3);
+      final analytics = _client(http, maxPendingEvents: 2, onError: errors.add);
+      final delivered = _trackMany(analytics, 3);
       expect(errors.single.message, contains('Dropped a "track" event'));
-      await expectLater(
-          analytics.flush(), throwsA(isA<RudderStackException>()));
+      await analytics.flush();
+      await Future.wait(delivered.take(2));
+      await expectLater(delivered.last, throwsA(isA<RudderStackException>()));
       expect(http.messages, hasLength(2));
     });
 
@@ -345,9 +400,9 @@ void main() {
           flushAt: 1,
           onError: (_) => throw StateError('handler bug'),
         );
-        _trackMany(analytics, 2);
-        await expectLater(
-            analytics.flush(), throwsA(isA<RudderStackException>()));
+        final delivered = _trackMany(analytics, 2);
+        await analytics.flush();
+        await delivered.last;
         expect(http.requests, hasLength(2));
       }, (error, _) => uncaught.add(error));
       expect(uncaught.single, isA<StateError>());
@@ -381,6 +436,15 @@ void main() {
         '0007-01-02T03:04:05.006Z');
     expect(formatTimestamp(DateTime.utc(2026, 12, 31, 23, 59, 59, 999, 999)),
         '2026-12-31T23:59:59.999Z');
+  });
+
+  test('parseRetryAfter reads finite seconds and caps them at 30 s', () {
+    expect(parseRetryAfter('1.5'), const Duration(milliseconds: 1500));
+    expect(parseRetryAfter('-3'), Duration.zero);
+    expect(parseRetryAfter('3600'), const Duration(seconds: 30));
+    expect(parseRetryAfter('1e400'), isNull);
+    expect(parseRetryAfter('NaN'), isNull);
+    expect(parseRetryAfter('Wed, 21 Oct 2015 07:28:00 GMT'), isNull);
   });
 
   test('defaultRetryDelay doubles from 200 ms with up to 20 % jitter', () {
