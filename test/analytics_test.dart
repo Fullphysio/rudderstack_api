@@ -295,13 +295,53 @@ void main() {
         flushAt: 1,
         retryCount: 0,
       );
+      final fromB = analytics.track(userId: 'b', event: 'B');
       final fromA = analytics.track(userId: 'a', event: 'A');
       final flushA = analytics.flush([fromA]);
-      final fromB = analytics.track(userId: 'b', event: 'B');
-      final flushB = analytics.flush([fromB]);
+      await expectLater(
+          analytics.flush([fromB]), throwsA(isA<RudderStackException>()));
+      await pumpEventQueue();
+      var aDone = false;
+      unawaited(flushA.then((_) => aDone = true));
+      await pumpEventQueue();
+      expect(aDone, isFalse, reason: "A's batch is still in flight");
       release.complete();
       await flushA;
-      await expectLater(flushB, throwsA(isA<RudderStackException>()));
+    });
+
+    test('flush(events) evaluates a lazy iterable before sending', () async {
+      final http = RecordingClient();
+      final analytics = _client(http);
+      await analytics.flush(
+          ['A', 'B'].map((name) => analytics.track(userId: 'u', event: name)));
+      expect([for (final m in http.messages) m['event']], ['A', 'B']);
+    });
+
+    test('flush(events) does not wait for batches after its own', () async {
+      final release = Completer<void>();
+      final analytics = _client(
+        MockClient((request) async {
+          final body = utf8.decode(gzip.decode(request.bodyBytes));
+          if (body.contains('"B"')) await release.future;
+          return http.Response('', 200);
+        }),
+        flushAt: 1,
+      );
+      final fromA = analytics.track(userId: 'a', event: 'A');
+      analytics.track(userId: 'b', event: 'B');
+      await analytics.flush([fromA]);
+      release.complete();
+      await analytics.flush();
+    });
+
+    test('flush(events) during shutdown waits instead of throwing', () async {
+      final http = RecordingClient();
+      final analytics = _client(http);
+      final delivered = analytics.track(userId: 'u', event: 'E');
+      final shutdown = analytics.shutdown();
+      await analytics.flush([delivered]);
+      await shutdown;
+      expect(http.messages, hasLength(1));
     });
 
     test('an event future settles only once its batch is sent', () async {
@@ -464,14 +504,21 @@ void main() {
   });
 
   group('lifecycle', () {
-    test('shutdown flushes, and later calls throw', () async {
+    test('shutdown flushes, and later events throw', () async {
       final http = RecordingClient();
       final analytics = _client(http);
       _trackMany(analytics, 3);
-      await analytics.shutdown();
+      final shutdown = analytics.shutdown();
+      expect(analytics.shutdown(), same(shutdown));
+      await shutdown;
       expect(http.messages, hasLength(3));
       expect(() => analytics.track(userId: 'u', event: 'E'), throwsStateError);
-      expect(analytics.flush, throwsStateError);
+      await analytics.flush();
+    });
+
+    test('shutdown does not throw when a batch fails', () async {
+      final analytics = _client(RecordingClient(statuses: [400]));
+      _trackMany(analytics, 2);
       await analytics.shutdown();
     });
 

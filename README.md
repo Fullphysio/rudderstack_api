@@ -49,19 +49,20 @@ A future settles only once its batch has been sent, by `flush()` or in the
 background. Awaiting it before a flush can wait for `flushInterval`, or forever
 when the interval is `Duration.zero`: pass it to `flush()` instead.
 
-`flush(events)` sends everything still queued, waits for batches in flight,
-then throws the `RudderStackException` of the first of `events` that was not
-delivered. On a shared client, a request passes only its own events, so it
-never sees another request's failure. `flush()` with no events never throws
-for a failed delivery. `shutdown()` flushes and closes the HTTP client.
+`flush(events)` sends everything still queued, waits for `events` only, and
+throws the first `RudderStackException` among them to arrive. On a shared
+client, a request passes only its own events, so it never sees another
+request's failure. `flush()` with no events waits for every batch in flight
+and never throws for a failed delivery. `shutdown()` does the same, then closes
+the HTTP client.
 
 ## On servers
 
 Create one client per process and reuse it. On a platform that freezes or
 recycles the instance once the response is sent — Cloud Run, Cloud Functions —
-`await flush(events)` with the request's own events before returning: queued
-events may otherwise never leave, and the throw fails the request, so the
-platform retries, when they were not delivered:
+before returning, `await flush(events)` with the request's own events. It
+sends them, and throws if one was not delivered, which fails the request so
+the platform retries it:
 
 ```dart
 RudderAnalytics? _analytics;

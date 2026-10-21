@@ -38,14 +38,17 @@ const String _libraryName = 'rudderstack_api';
 /// and return at once; delivery happens in the background once [flushAt]
 /// events are queued, [maxBatchBytes] is reached, or [flushInterval] elapses.
 ///
-/// Each call returns a future that completes when that event is delivered, or
-/// fails with a [RudderStackException] when its batch is rejected — the Dart
-/// form of the Node SDK's per-message callback. Not awaiting it is safe: the
-/// failure then only reaches [onError].
+/// Each call returns a future for its event — the Dart form of the Node SDK's
+/// per-message callback:
 ///
-/// The future settles only once its batch has been sent, by [flush] or in the
-/// background. Awaiting it before a flush can wait for [flushInterval], or
-/// forever when the interval is [Duration.zero]. Pass it to [flush] instead.
+/// {@template rudderstack_api.delivery}
+/// The returned future completes when the event is delivered, or fails with a
+/// [RudderStackException] when its batch is rejected. It settles only once the
+/// batch has been sent, by `flush` or in the background, so pass it to `flush`
+/// rather than awaiting it first: that can wait for `flushInterval`, or
+/// forever when it is zero. Not awaiting it is safe; a failure then only
+/// reaches `onError`.
+/// {@endtemplate}
 ///
 /// On a server that may be frozen or recycled between requests — Cloud Run,
 /// Cloud Functions — `await` [flush] with the request's own events before
@@ -154,14 +157,13 @@ class RudderAnalytics {
   int _backlog = 0;
   Timer? _timer;
   Future<void> _inFlight = Future.value();
-  bool _closed = false;
+  Future<void>? _shutdown;
 
   /// Records who a user is and the [traits] that describe them.
   ///
   /// The traits are sent both at the top level and as `context.traits`.
   ///
-  /// Returns a future that settles once the event's batch has been sent: pass
-  /// it to [flush] rather than awaiting it first. See [RudderAnalytics].
+  /// {@macro rudderstack_api.delivery}
   Future<void> identify({
     String? userId,
     String? anonymousId,
@@ -190,8 +192,7 @@ class RudderAnalytics {
 
   /// Records that a user performed [event].
   ///
-  /// Returns a future that settles once the event's batch has been sent: pass
-  /// it to [flush] rather than awaiting it first. See [RudderAnalytics].
+  /// {@macro rudderstack_api.delivery}
   Future<void> track({
     required String event,
     String? userId,
@@ -220,8 +221,7 @@ class RudderAnalytics {
 
   /// Records that a user viewed a web page.
   ///
-  /// Returns a future that settles once the event's batch has been sent: pass
-  /// it to [flush] rather than awaiting it first. See [RudderAnalytics].
+  /// {@macro rudderstack_api.delivery}
   Future<void> page({
     String? name,
     String? category,
@@ -251,8 +251,7 @@ class RudderAnalytics {
 
   /// Records that a user viewed a mobile app screen.
   ///
-  /// Returns a future that settles once the event's batch has been sent: pass
-  /// it to [flush] rather than awaiting it first. See [RudderAnalytics].
+  /// {@macro rudderstack_api.delivery}
   Future<void> screen({
     String? name,
     String? userId,
@@ -280,8 +279,7 @@ class RudderAnalytics {
 
   /// Associates a user with the group [groupId], such as a company or team.
   ///
-  /// Returns a future that settles once the event's batch has been sent: pass
-  /// it to [flush] rather than awaiting it first. See [RudderAnalytics].
+  /// {@macro rudderstack_api.delivery}
   Future<void> group({
     required String groupId,
     String? userId,
@@ -310,8 +308,7 @@ class RudderAnalytics {
 
   /// Merges the identity [previousId] into [userId].
   ///
-  /// Returns a future that settles once the event's batch has been sent: pass
-  /// it to [flush] rather than awaiting it first. See [RudderAnalytics].
+  /// {@macro rudderstack_api.delivery}
   Future<void> alias({
     required String userId,
     required String previousId,
@@ -334,31 +331,32 @@ class RudderAnalytics {
         messageId: messageId);
   }
 
-  /// Sends every queued event, waits until all batches, including those
-  /// already in flight, have been delivered or have failed, then waits for
-  /// [events].
+  /// Sends every queued event and waits for it to be delivered or to fail.
   ///
-  /// [events] are futures returned by the event calls. Throws the
-  /// [RudderStackException] of the first one that was not delivered, so a
-  /// caller sees its own failures and never those of other callers sharing
-  /// this client. With no [events], it never throws for a failed delivery:
-  /// [onError] still sees every one. Failed events are not re-queued.
+  /// With [events] — futures returned by the event calls — it waits only for
+  /// those, and throws the first [RudderStackException] among them to arrive,
+  /// so a caller sees its own failures and never those of other callers
+  /// sharing this client. Without, it waits for every batch in flight and
+  /// never throws for a failed delivery; [onError] still sees every one.
+  /// Failed events are not re-queued.
   ///
-  /// Throws a [StateError] after [shutdown].
+  /// After [shutdown] has started, it waits for the shutdown's sending
+  /// instead of sending anything itself.
   Future<void> flush([Iterable<Future<void>> events = const []]) async {
-    _ensureOpen();
-    await _flush();
-    await Future.wait(events);
+    final pending = events.toList();
+    final sent = _shutdown ?? _flush();
+    await (pending.isEmpty ? sent : Future.wait(pending));
   }
 
-  /// Flushes, then releases the HTTP client if this instance created it.
-  /// Like [flush], it does not throw for failed deliveries.
+  /// Sends everything still queued, waits for it, then releases the HTTP
+  /// client if this instance created it. Like `flush()` with no events, it
+  /// never throws for a failed delivery.
   ///
-  /// Events recorded afterwards throw a [StateError]. Calling it again is a
-  /// no-op.
-  Future<void> shutdown() async {
-    if (_closed) return;
-    _closed = true;
+  /// Events recorded afterwards throw a [StateError]. Calling it again returns
+  /// the same future.
+  Future<void> shutdown() => _shutdown ??= _close();
+
+  Future<void> _close() async {
     try {
       await _flush();
     } finally {
@@ -563,7 +561,7 @@ class RudderAnalytics {
   }
 
   void _ensureOpen() {
-    if (_closed) {
+    if (_shutdown != null) {
       throw StateError('This RudderAnalytics has been shut down.');
     }
   }

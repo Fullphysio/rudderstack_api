@@ -33,6 +33,7 @@ void main() {
   test('delivers one event of every type in a gzip batch', () async {
     const anonymousId = 'rudderstack_api-integration-test';
     final analytics = client(writeKey);
+    addTearDown(analytics.shutdown);
     final delivered = [
       analytics.identify(anonymousId: anonymousId, traits: {'test': true}),
       analytics.track(
@@ -46,17 +47,16 @@ void main() {
           anonymousId: anonymousId, groupId: 'rudderstack_api-test'),
     ];
     await analytics.flush(delivered);
-    await analytics.shutdown();
   });
 
   test('rejects an invalid write key with 401', () async {
     final analytics = client('invalid-write-key');
+    addTearDown(analytics.shutdown);
     final delivered = analytics.track(anonymousId: 'a', event: 'E');
     await expectLater(
       analytics.flush([delivered]),
       throwsA(isA<RudderStackException>()
           .having((e) => e.statusCode, 'statusCode', 401)),
     );
-    await analytics.shutdown();
   });
 }
