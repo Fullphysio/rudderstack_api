@@ -7,8 +7,7 @@ no-comments or 120-column rules.
   IDE hovers depend on it.
 - No comments on private implementation code. Name things properly instead.
 - Formatting is stock `dart format` — **default width, no `--line-length`**.
-  That is what `pana` and pub.dev expect with zero configuration.
-  Note the Fullphysio machine's Dart is a custom Flutter-fork build whose
+  That is what `pana` and pub.dev expect with zero configuration. A local
   formatter can disagree with stable; CI runs official stable and is the arbiter.
 - `dart analyze --fatal-infos` must be clean.
 - `lib/` must not import `dart:io` outside `lib/src/platform_io.dart`, or the

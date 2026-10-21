@@ -42,16 +42,13 @@
               },
               "type": "identify",
               "channel": "server",
-              "_metadata": {
-                "nodeVersion": "24.12.0"
-              },
-              "originalTimestamp": "2026-10-21T09:22:07.053Z",
-              "messageId": "3ecf9e9f-d73e-4a7e-a88e-4fc15dfbe9b0",
-              "sentAt": "2026-10-21T09:22:07.054Z"
+              "originalTimestamp": "2026-10-21T14:46:58.032Z",
+              "messageId": "60b7f6e3-770a-421f-8c38-07f549a91159",
+              "sentAt": "2026-10-21T14:46:58.033Z"
             }
           ],
-          "timestamp": "2026-10-21T09:22:07.054Z",
-          "sentAt": "2026-10-21T09:22:07.054Z"
+          "timestamp": "2026-10-21T14:46:58.033Z",
+          "sentAt": "2026-10-21T14:46:58.033Z"
         }
       }
     },
@@ -94,16 +91,13 @@
               },
               "type": "identify",
               "channel": "server",
-              "_metadata": {
-                "nodeVersion": "24.12.0"
-              },
-              "originalTimestamp": "2026-10-21T09:22:07.066Z",
-              "messageId": "8277d21d-7234-495e-bb39-c824896dc530",
-              "sentAt": "2026-10-21T09:22:07.066Z"
+              "originalTimestamp": "2026-10-21T14:46:58.063Z",
+              "messageId": "db4023a3-7472-4b4a-a0c2-9331b4486163",
+              "sentAt": "2026-10-21T14:46:58.063Z"
             }
           ],
-          "timestamp": "2026-10-21T09:22:07.066Z",
-          "sentAt": "2026-10-21T09:22:07.066Z"
+          "timestamp": "2026-10-21T14:46:58.063Z",
+          "sentAt": "2026-10-21T14:46:58.063Z"
         }
       }
     },
@@ -132,16 +126,13 @@
                 }
               },
               "channel": "server",
-              "_metadata": {
-                "nodeVersion": "24.12.0"
-              },
-              "originalTimestamp": "2026-10-21T09:22:07.069Z",
-              "messageId": "9b8e4b7d-9ff3-40b1-b5e8-21d4761f4589",
-              "sentAt": "2026-10-21T09:22:07.069Z"
+              "originalTimestamp": "2026-10-21T14:46:58.066Z",
+              "messageId": "bf190dd4-aad0-47e4-9ab7-23881cb16b05",
+              "sentAt": "2026-10-21T14:46:58.066Z"
             }
           ],
-          "timestamp": "2026-10-21T09:22:07.069Z",
-          "sentAt": "2026-10-21T09:22:07.069Z"
+          "timestamp": "2026-10-21T14:46:58.066Z",
+          "sentAt": "2026-10-21T14:46:58.066Z"
         }
       }
     },
@@ -163,7 +154,7 @@
         },
         "context": {
           "traits": {
-            "role": "physio"
+            "role": "admin"
           }
         },
         "integrations": {
@@ -198,7 +189,7 @@
               },
               "context": {
                 "traits": {
-                  "role": "physio"
+                  "role": "admin"
                 },
                 "library": {
                   "name": "analytics-node",
@@ -212,16 +203,13 @@
               "timestamp": "2026-01-31T09:05:03.042Z",
               "type": "track",
               "channel": "server",
-              "_metadata": {
-                "nodeVersion": "24.12.0"
-              },
-              "originalTimestamp": "2026-10-21T09:22:07.071Z",
-              "messageId": "f182e32f-8cff-4e44-b2e8-1d50dbb5caf1",
-              "sentAt": "2026-10-21T09:22:07.071Z"
+              "originalTimestamp": "2026-10-21T14:46:58.068Z",
+              "messageId": "fb0af1ab-25f7-4b22-9ede-36410daca71c",
+              "sentAt": "2026-10-21T14:46:58.068Z"
             }
           ],
-          "timestamp": "2026-10-21T09:22:07.071Z",
-          "sentAt": "2026-10-21T09:22:07.071Z"
+          "timestamp": "2026-10-21T14:46:58.068Z",
+          "sentAt": "2026-10-21T14:46:58.068Z"
         }
       }
     },
@@ -258,16 +246,13 @@
                 }
               },
               "channel": "server",
-              "_metadata": {
-                "nodeVersion": "24.12.0"
-              },
-              "originalTimestamp": "2026-10-21T09:22:07.073Z",
-              "messageId": "31d47255-e1a0-4ebf-88a7-50f9e8c73087",
-              "sentAt": "2026-10-21T09:22:07.073Z"
+              "originalTimestamp": "2026-10-21T14:46:58.071Z",
+              "messageId": "59cd1820-c03d-4f4f-a7ee-706bd084094a",
+              "sentAt": "2026-10-21T14:46:58.071Z"
             }
           ],
-          "timestamp": "2026-10-21T09:22:07.073Z",
-          "sentAt": "2026-10-21T09:22:07.073Z"
+          "timestamp": "2026-10-21T14:46:58.071Z",
+          "sentAt": "2026-10-21T14:46:58.071Z"
         }
       }
     },
@@ -306,16 +291,13 @@
                 }
               },
               "channel": "server",
-              "_metadata": {
-                "nodeVersion": "24.12.0"
-              },
-              "originalTimestamp": "2026-10-21T09:22:07.074Z",
-              "messageId": "2cf67b8d-55c1-41d3-81af-ef2c8af316d8",
-              "sentAt": "2026-10-21T09:22:07.074Z"
+              "originalTimestamp": "2026-10-21T14:46:58.077Z",
+              "messageId": "a8dd28a7-84be-4e7a-87b9-f01c9d586307",
+              "sentAt": "2026-10-21T14:46:58.077Z"
             }
           ],
-          "timestamp": "2026-10-21T09:22:07.074Z",
-          "sentAt": "2026-10-21T09:22:07.074Z"
+          "timestamp": "2026-10-21T14:46:58.077Z",
+          "sentAt": "2026-10-21T14:46:58.077Z"
         }
       }
     },
@@ -352,16 +334,13 @@
                 }
               },
               "channel": "server",
-              "_metadata": {
-                "nodeVersion": "24.12.0"
-              },
-              "originalTimestamp": "2026-10-21T09:22:07.075Z",
-              "messageId": "2c7f7de4-b75a-43fd-a565-7c5537611b6f",
-              "sentAt": "2026-10-21T09:22:07.075Z"
+              "originalTimestamp": "2026-10-21T14:46:58.085Z",
+              "messageId": "e17cca5c-aace-4fef-a558-2e5b6c7c81cc",
+              "sentAt": "2026-10-21T14:46:58.085Z"
             }
           ],
-          "timestamp": "2026-10-21T09:22:07.075Z",
-          "sentAt": "2026-10-21T09:22:07.075Z"
+          "timestamp": "2026-10-21T14:46:58.085Z",
+          "sentAt": "2026-10-21T14:46:58.085Z"
         }
       }
     },
@@ -398,16 +377,13 @@
                 }
               },
               "channel": "server",
-              "_metadata": {
-                "nodeVersion": "24.12.0"
-              },
-              "originalTimestamp": "2026-10-21T09:22:07.076Z",
-              "messageId": "401309c8-45a2-4dc6-873b-1c44ce804c51",
-              "sentAt": "2026-10-21T09:22:07.076Z"
+              "originalTimestamp": "2026-10-21T14:46:58.093Z",
+              "messageId": "6f70522a-5580-4c60-bbf8-abbb3b810bbc",
+              "sentAt": "2026-10-21T14:46:58.093Z"
             }
           ],
-          "timestamp": "2026-10-21T09:22:07.076Z",
-          "sentAt": "2026-10-21T09:22:07.076Z"
+          "timestamp": "2026-10-21T14:46:58.093Z",
+          "sentAt": "2026-10-21T14:46:58.093Z"
         }
       }
     },
@@ -438,16 +414,13 @@
                 }
               },
               "channel": "server",
-              "_metadata": {
-                "nodeVersion": "24.12.0"
-              },
-              "originalTimestamp": "2026-10-21T09:22:07.077Z",
-              "messageId": "cfcb1985-56f6-4232-b23f-18fcde656326",
-              "sentAt": "2026-10-21T09:22:07.077Z"
+              "originalTimestamp": "2026-10-21T14:46:58.098Z",
+              "messageId": "c2b13bd0-49a5-4e68-928f-3853557a63ad",
+              "sentAt": "2026-10-21T14:46:58.098Z"
             }
           ],
-          "timestamp": "2026-10-21T09:22:07.077Z",
-          "sentAt": "2026-10-21T09:22:07.077Z"
+          "timestamp": "2026-10-21T14:46:58.098Z",
+          "sentAt": "2026-10-21T14:46:58.098Z"
         }
       }
     }

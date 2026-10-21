@@ -60,6 +60,10 @@ function startServer(statuses) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ server, requests })));
 }
 
+function withoutMetadata(body) {
+  return Object.assign({}, body, { batch: body.batch.map(({ _metadata, ...message }) => message) });
+}
+
 function client(port, options) {
   return new Analytics(WRITE_KEY, Object.assign({
     dataPlaneUrl: `http://127.0.0.1:${port}/`,
@@ -78,7 +82,7 @@ const calls = {
     userId: 'user-1',
     event: 'Program Created',
     properties: { exercises: 3, tags: ['knee', 'acl'], nested: { ok: true }, empty: null },
-    context: { traits: { role: 'physio' } },
+    context: { traits: { role: 'admin' } },
     integrations: { All: false, PostHog: true },
     timestamp: fixedTimestamp,
   },
@@ -110,7 +114,7 @@ async function captureMessages() {
           'content-encoding': request.headers['content-encoding'] || null,
           'user-agent': request.headers['user-agent'],
         },
-        body: request.body,
+        body: withoutMetadata(request.body),
       },
     };
   }

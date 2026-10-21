@@ -7,5 +7,8 @@ pubspec.lock
 doc/api/
 node_modules/
 
+# Contributor and assistant notes, not package documentation.
+CLAUDE.md
+
 # The fixture-capture script is a build-time input with no runtime use.
 tool/
