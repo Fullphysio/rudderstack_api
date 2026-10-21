@@ -263,6 +263,58 @@ void main() {
       await accepted;
     });
 
+    test('flush(events) throws for the events passed, only those', () async {
+      final analytics = _client(
+        MockClient((request) async {
+          final body = utf8.decode(gzip.decode(request.bodyBytes));
+          return http.Response('', body.contains('"B"') ? 400 : 200);
+        }),
+        flushAt: 1,
+      );
+      final fromA = analytics.track(userId: 'a', event: 'A');
+      final fromB = analytics.track(userId: 'b', event: 'B');
+      await analytics.flush([fromA]);
+      await expectLater(
+        analytics.flush([fromB]),
+        throwsA(isA<RudderStackException>()
+            .having((e) => e.statusCode, 'statusCode', 400)),
+      );
+      await analytics.flush();
+    });
+
+    test('interleaved callers each see their own outcome', () async {
+      final release = Completer<void>();
+      final analytics = _client(
+        MockClient((request) async {
+          final body = utf8.decode(gzip.decode(request.bodyBytes));
+          if (body.contains('"A"')) await release.future;
+          return http.Response('', body.contains('"B"') ? 503 : 200);
+        }),
+        flushAt: 1,
+        retryCount: 0,
+      );
+      final fromA = analytics.track(userId: 'a', event: 'A');
+      final flushA = analytics.flush([fromA]);
+      final fromB = analytics.track(userId: 'b', event: 'B');
+      final flushB = analytics.flush([fromB]);
+      release.complete();
+      await flushA;
+      await expectLater(flushB, throwsA(isA<RudderStackException>()));
+    });
+
+    test('an event future settles only once its batch is sent', () async {
+      final http = RecordingClient();
+      final analytics = _client(http);
+      var settled = false;
+      final delivered =
+          analytics.track(userId: 'u', event: 'E').then((_) => settled = true);
+      await pumpEventQueue();
+      expect(settled, isFalse);
+      expect(http.requests, isEmpty);
+      await analytics.flush([delivered]);
+      expect(settled, isTrue);
+    });
+
     test('a caller only sees the failure of its own events', () async {
       final analytics = _client(
         MockClient((request) async {
@@ -426,7 +478,7 @@ void main() {
       final analytics = _client(http, enabled: false);
       _trackMany(analytics, 3);
       expect(() => analytics.track(event: 'E'), throwsArgumentError);
-      await analytics.flush();
+      await analytics.flush([analytics.track(userId: 'u', event: 'E')]);
       expect(http.requests, isEmpty);
     });
   });
@@ -442,6 +494,8 @@ void main() {
     expect(parseRetryAfter('1.5'), const Duration(milliseconds: 1500));
     expect(parseRetryAfter('-3'), Duration.zero);
     expect(parseRetryAfter('3600'), const Duration(seconds: 30));
+    expect(parseRetryAfter('1e306'), const Duration(seconds: 30));
+    expect(parseRetryAfter('9e15'), const Duration(seconds: 30));
     expect(parseRetryAfter('1e400'), isNull);
     expect(parseRetryAfter('NaN'), isNull);
     expect(parseRetryAfter('Wed, 21 Oct 2015 07:28:00 GMT'), isNull);

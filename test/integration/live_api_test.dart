@@ -44,16 +44,15 @@ void main() {
       analytics.group(
           anonymousId: anonymousId, groupId: 'rudderstack_api-test'),
     ];
+    await analytics.flush(delivered);
     await analytics.shutdown();
-    await Future.wait(delivered);
   });
 
   test('rejects an invalid write key with 401', () async {
     final analytics = client('invalid-write-key');
     final delivered = analytics.track(anonymousId: 'a', event: 'E');
-    await analytics.flush();
     await expectLater(
-      delivered,
+      analytics.flush([delivered]),
       throwsA(isA<RudderStackException>()
           .having((e) => e.statusCode, 'statusCode', 401)),
     );

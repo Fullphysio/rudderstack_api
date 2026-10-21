@@ -21,11 +21,10 @@ Future<void> main() async {
     ),
   ];
 
-  await analytics.flush();
   try {
-    await Future.wait(delivered);
+    await analytics.flush(delivered);
   } on RudderStackException catch (error) {
-    stderr.writeln('${error.eventCount} events were not delivered: $error');
+    stderr.writeln('Delivery failed: $error');
   } finally {
     await analytics.shutdown();
   }

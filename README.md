@@ -26,8 +26,7 @@ final delivered = [
   ),
 ];
 
-await analytics.flush();
-await Future.wait(delivered); // throws RudderStackException if a batch failed
+await analytics.flush(delivered); // throws RudderStackException if one failed
 ```
 
 ## Delivery
@@ -42,18 +41,23 @@ optional: a failure nobody awaits does not crash the isolate, and still reaches
 `onError`. Projects that enable the `unawaited_futures` lint wrap
 fire-and-forget calls in `unawaited(...)`.
 
-`flush()` sends everything still queued and waits for batches in flight. It
-does not throw for a failed delivery — the event futures carry that — so on a
-shared client, one request never sees another request's failure.
-`shutdown()` flushes and closes the HTTP client.
+A future settles only once its batch has been sent, by `flush()` or in the
+background. Awaiting it before a flush can wait for `flushInterval`, or forever
+when the interval is `Duration.zero`: pass it to `flush()` instead.
+
+`flush(events)` sends everything still queued, waits for batches in flight,
+then throws the `RudderStackException` of the first of `events` that was not
+delivered. On a shared client, a request passes only its own events, so it
+never sees another request's failure. `flush()` with no events never throws
+for a failed delivery. `shutdown()` flushes and closes the HTTP client.
 
 ## On servers
 
 Create one client per process and reuse it. On a platform that freezes or
 recycles the instance once the response is sent — Cloud Run, Cloud Functions —
-`await flush()` before returning, or queued events may never leave. Then await
-the request's own events to fail it, and let the platform retry, when they were
-not delivered:
+`await flush(events)` with the request's own events before returning: queued
+events may otherwise never leave, and the throw fails the request, so the
+platform retries, when they were not delivered:
 
 ```dart
 RudderAnalytics? _analytics;
@@ -64,9 +68,9 @@ RudderAnalytics analytics() => _analytics ??= RudderAnalytics(
     );
 
 Future<void> onUserCreated(String uid, Map<String, Object?> traits) async {
-  final delivered = analytics().identify(userId: uid, traits: traits);
-  await analytics().flush();
-  await delivered;
+  await analytics().flush([
+    analytics().identify(userId: uid, traits: traits),
+  ]);
 }
 ```
 
@@ -81,7 +85,7 @@ Every failure is reported. Nothing is swallowed.
 |---|---|
 | Missing `userId`/`anonymousId`, `event`, `groupId` or `previousId` | `ArgumentError` at the call site |
 | A property JSON cannot encode | `JsonUnsupportedObjectError` at the call site. `DateTime` is encoded as an ISO-8601 string, `NaN` and `Infinity` as `null`, as `JSON.stringify` does |
-| A batch the data plane rejected or never answered | the futures of its events fail with `RudderStackException`, and `onError` is called once |
+| A batch the data plane rejected or never answered | the futures of its events fail with `RudderStackException`, `flush(events)` throws it for those events, and `onError` is called once. `eventCount` is the batch size, which on a shared client includes other callers' events |
 | More than `maxPendingEvents` events waiting or in flight | the event is dropped: its future fails and `onError` is called |
 
 Connection errors, `429` and `5xx` are retried `retryCount` times (default 3)
@@ -112,7 +116,8 @@ Deliberate differences:
 
 - **Futures instead of callbacks.** Each call returns a future for its event,
   the Dart form of the Node SDK's per-message callback. `flush()` drains the
-  whole queue, where the Node SDK sends one batch per call, and never rejects.
+  whole queue, where the Node SDK sends one batch per call, and rejects only for
+  the events passed to it.
 - **No unhandled errors.** The Node SDK flushes the first event from inside
   `track()` without awaiting it, so a failed delivery becomes an unhandled
   rejection.

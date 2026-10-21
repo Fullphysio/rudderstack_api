@@ -1,9 +1,10 @@
 /// A batch of events that could not be delivered to the data plane.
 ///
-/// Thrown by `RudderAnalytics.flush` and passed to `RudderAnalytics.onError`.
-/// The events it covers are dropped, not re-queued.
+/// Every event future of the batch fails with it, so `RudderAnalytics.flush`
+/// throws it for the events passed to it, and `RudderAnalytics.onError`
+/// receives it once. The events it covers are dropped, not re-queued.
 class RudderStackException implements Exception {
-  /// Creates an exception covering [eventCount] undelivered events.
+  /// Creates an exception for a batch of [eventCount] events.
   RudderStackException(
     this.message, {
     required this.eventCount,
@@ -15,7 +16,8 @@ class RudderStackException implements Exception {
   /// What went wrong, including the request URL.
   final String message;
 
-  /// How many events were not delivered.
+  /// How many events the failed batch carried. On a client shared by
+  /// several callers, that includes events other callers recorded.
   final int eventCount;
 
   /// The data plane's HTTP status, or `null` when no response arrived.
