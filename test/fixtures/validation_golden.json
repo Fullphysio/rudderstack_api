@@ -1,0 +1,88 @@
+{
+  "capturedFrom": "@rudderstack/rudder-sdk-node@3.0.3",
+  "cases": {
+    "track_without_identity": {
+      "type": "track",
+      "input": {
+        "event": "E"
+      },
+      "threw": true,
+      "message": "You must pass either an \"anonymousId\" or a \"userId\"."
+    },
+    "track_without_event": {
+      "type": "track",
+      "input": {
+        "userId": "u"
+      },
+      "threw": true,
+      "message": "You must pass an \"event\"."
+    },
+    "track_empty_user_id": {
+      "type": "track",
+      "input": {
+        "userId": "",
+        "event": "E"
+      },
+      "threw": true,
+      "message": "You must pass either an \"anonymousId\" or a \"userId\"."
+    },
+    "identify_without_identity": {
+      "type": "identify",
+      "input": {
+        "traits": {
+          "a": 1
+        }
+      },
+      "threw": true,
+      "message": "You must pass either an \"anonymousId\" or a \"userId\"."
+    },
+    "page_without_identity": {
+      "type": "page",
+      "input": {
+        "name": "Home"
+      },
+      "threw": true,
+      "message": "You must pass either an \"anonymousId\" or a \"userId\"."
+    },
+    "screen_without_identity": {
+      "type": "screen",
+      "input": {
+        "name": "Home"
+      },
+      "threw": true,
+      "message": "You must pass either an \"anonymousId\" or a \"userId\"."
+    },
+    "group_without_group_id": {
+      "type": "group",
+      "input": {
+        "userId": "u"
+      },
+      "threw": true,
+      "message": "You must pass a \"groupId\"."
+    },
+    "group_without_identity": {
+      "type": "group",
+      "input": {
+        "groupId": "g"
+      },
+      "threw": true,
+      "message": "You must pass either an \"anonymousId\" or a \"userId\"."
+    },
+    "alias_without_user_id": {
+      "type": "alias",
+      "input": {
+        "previousId": "p"
+      },
+      "threw": true,
+      "message": "You must pass a \"userId\"."
+    },
+    "alias_without_previous_id": {
+      "type": "alias",
+      "input": {
+        "userId": "u"
+      },
+      "threw": true,
+      "message": "You must pass a \"previousId\"."
+    }
+  }
+}

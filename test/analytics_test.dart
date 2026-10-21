@@ -1,0 +1,392 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:rudderstack_api/rudderstack_api.dart';
+import 'package:test/test.dart';
+
+import '_support/recording_client.dart';
+
+RudderAnalytics _client(
+  http.Client httpClient, {
+  int flushAt = 20,
+  Duration flushInterval = Duration.zero,
+  int maxBatchBytes = 450 * 1024,
+  int maxQueueSize = 20000,
+  int retryCount = 3,
+  Duration timeout = const Duration(seconds: 10),
+  bool gzip = true,
+  bool enabled = true,
+  RudderStackErrorHandler? onError,
+}) =>
+    RudderAnalytics(
+      'key',
+      dataPlaneUrl: Uri.parse('https://example.dataplane.rudderstack.com'),
+      flushAt: flushAt,
+      flushInterval: flushInterval,
+      maxBatchBytes: maxBatchBytes,
+      maxQueueSize: maxQueueSize,
+      retryCount: retryCount,
+      retryDelay: (_) => Duration.zero,
+      timeout: timeout,
+      gzip: gzip,
+      enabled: enabled,
+      onError: onError,
+      httpClient: httpClient,
+    );
+
+void _trackMany(RudderAnalytics analytics, int count) {
+  for (var i = 0; i < count; i++) {
+    analytics.track(userId: 'u', event: 'E$i');
+  }
+}
+
+void main() {
+  group('constructor', () {
+    test('posts to <dataPlaneUrl>/v1/batch, ignoring trailing slashes', () {
+      final analytics = RudderAnalytics('key',
+          dataPlaneUrl: Uri.parse('https://dp.example.com/proxy//'));
+      expect(analytics.batchUrl.toString(),
+          'https://dp.example.com/proxy/v1/batch');
+    });
+
+    test('rejects an empty write key and a relative data plane URL', () {
+      final url = Uri.parse('https://dp.example.com');
+      expect(() => RudderAnalytics('', dataPlaneUrl: url), throwsArgumentError);
+      expect(() => RudderAnalytics('k', dataPlaneUrl: Uri.parse('/v1')),
+          throwsArgumentError);
+      expect(
+          () => RudderAnalytics('k',
+              dataPlaneUrl: Uri.parse('ftp://dp.example.com')),
+          throwsArgumentError);
+    });
+
+    test('rejects out-of-range numeric options', () {
+      final url = Uri.parse('https://dp.example.com');
+      expect(() => RudderAnalytics('k', dataPlaneUrl: url, flushAt: 0),
+          throwsArgumentError);
+      expect(() => RudderAnalytics('k', dataPlaneUrl: url, retryCount: -1),
+          throwsArgumentError);
+      expect(
+          () => RudderAnalytics('k', dataPlaneUrl: url, timeout: Duration.zero),
+          throwsArgumentError);
+    });
+  });
+
+  group('batching', () {
+    test('sends nothing until flush when the interval is disabled', () async {
+      final http = RecordingClient();
+      final analytics = _client(http);
+      _trackMany(analytics, 5);
+      await pumpEventQueue();
+      expect(http.requests, isEmpty);
+
+      await analytics.flush();
+      expect(http.requests.single.batch, hasLength(5));
+    });
+
+    test('sends a batch in the background once flushAt is reached', () async {
+      final http = RecordingClient();
+      final analytics = _client(http, flushAt: 3);
+      _trackMany(analytics, 7);
+      await pumpEventQueue();
+      expect([for (final r in http.requests) r.batch.length], [3, 3]);
+
+      await analytics.flush();
+      expect([for (final r in http.requests) r.batch.length], [3, 3, 1]);
+      expect([for (final m in http.messages) m['event']],
+          [for (var i = 0; i < 7; i++) 'E$i']);
+    });
+
+    test('splits batches to stay under maxBatchBytes', () async {
+      final http = RecordingClient();
+      final analytics = _client(http, maxBatchBytes: 1200);
+      for (var i = 0; i < 6; i++) {
+        analytics
+            .track(userId: 'u', event: 'E', properties: {'pad': 'x' * 300});
+      }
+      await analytics.flush();
+      expect(http.requests.length, greaterThan(1));
+      for (final request in http.requests) {
+        final bytes = utf8.encode(jsonEncode(request.batch)).length;
+        expect(bytes, lessThanOrEqualTo(1200 + 100 * request.batch.length));
+      }
+      expect(http.messages, hasLength(6));
+    });
+
+    test('sends a message larger than maxBatchBytes on its own', () async {
+      final http = RecordingClient();
+      final analytics = _client(http, maxBatchBytes: 100);
+      analytics.track(userId: 'u', event: 'E', properties: {'pad': 'x' * 500});
+      await analytics.flush();
+      expect(http.requests.single.batch, hasLength(1));
+    });
+
+    test('flushes on the interval timer', () async {
+      final http = RecordingClient();
+      final analytics =
+          _client(http, flushInterval: const Duration(milliseconds: 20));
+      _trackMany(analytics, 2);
+      expect(http.requests, isEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(http.requests.single.batch, hasLength(2));
+      await analytics.shutdown();
+    });
+
+    test('flush waits for batches already in flight', () async {
+      final release = Completer<void>();
+      var received = 0;
+      final analytics = _client(
+        MockClient((request) async {
+          received++;
+          await release.future;
+          return http.Response('OK', 200);
+        }),
+        flushAt: 1,
+      );
+      analytics.track(userId: 'u', event: 'E');
+      await pumpEventQueue();
+      expect(received, 1);
+
+      var flushed = false;
+      final flush = analytics.flush().then((_) => flushed = true);
+      await pumpEventQueue();
+      expect(flushed, isFalse);
+      release.complete();
+      await flush;
+      expect(flushed, isTrue);
+    });
+  });
+
+  group('message', () {
+    test('is a snapshot taken at call time', () async {
+      final http = RecordingClient();
+      final analytics = _client(http);
+      final properties = <String, Object?>{'count': 1};
+      analytics.track(userId: 'u', event: 'E', properties: properties);
+      properties['count'] = 2;
+      await analytics.flush();
+      expect(http.messages.single['properties'], {'count': 1});
+    });
+
+    test('encodes DateTime values as JavaScript does', () async {
+      final http = RecordingClient();
+      final analytics = _client(http);
+      analytics.track(
+        userId: 'u',
+        event: 'E',
+        properties: {'at': DateTime.utc(2026, 1, 31, 9, 5, 3, 42, 999)},
+        timestamp: DateTime.utc(2026, 1, 31, 9, 5, 3, 42),
+      );
+      await analytics.flush();
+      expect(http.messages.single['properties'],
+          {'at': '2026-01-31T09:05:03.042Z'});
+      expect(http.messages.single['timestamp'], '2026-01-31T09:05:03.042Z');
+    });
+
+    test('throws at the call site for a value JSON cannot encode', () {
+      final analytics = _client(RecordingClient());
+      expect(
+        () => analytics
+            .track(userId: 'u', event: 'E', properties: {'x': Object()}),
+        throwsA(isA<JsonUnsupportedObjectError>()),
+      );
+    });
+
+    test('keeps a caller-supplied messageId', () async {
+      final http = RecordingClient();
+      final analytics = _client(http);
+      analytics.track(userId: 'u', event: 'E', messageId: 'my-id');
+      await analytics.flush();
+      expect(http.messages.single['messageId'], 'my-id');
+    });
+
+    test('generates distinct messageIds', () async {
+      final http = RecordingClient();
+      final analytics = _client(http);
+      _trackMany(analytics, 50);
+      await analytics.flush();
+      expect({for (final m in http.messages) m['messageId']}, hasLength(50));
+    });
+
+    test('is plain JSON when gzip is off', () async {
+      final http = RecordingClient();
+      final analytics = _client(http, gzip: false);
+      analytics.track(userId: 'u', event: 'E');
+      await analytics.flush();
+      expect(http.requests.single.request.headers['Content-Encoding'], isNull);
+      expect(http.requests.single.request.headers['Content-Type'],
+          startsWith('application/json'));
+    });
+  });
+
+  group('failures', () {
+    test('flush throws once, then the slate is clean', () async {
+      final http = RecordingClient(statuses: [400, 200]);
+      final analytics = _client(http);
+      analytics.track(userId: 'u', event: 'E');
+      await expectLater(
+        analytics.flush(),
+        throwsA(isA<RudderStackException>()
+            .having((e) => e.statusCode, 'statusCode', 400)
+            .having((e) => e.responseBody, 'responseBody', 'error')
+            .having((e) => e.eventCount, 'eventCount', 1)),
+      );
+      analytics.track(userId: 'u', event: 'E');
+      await analytics.flush();
+    });
+
+    test('a background failure is reported by the next flush', () async {
+      final http = RecordingClient(statuses: [500, 500, 500, 500, 200]);
+      final analytics = _client(http, flushAt: 2);
+      _trackMany(analytics, 2);
+      await pumpEventQueue();
+      expect(http.requests, hasLength(4));
+
+      await expectLater(
+          analytics.flush(),
+          throwsA(isA<RudderStackException>()
+              .having((e) => e.statusCode, 'statusCode', 500)
+              .having((e) => e.eventCount, 'eventCount', 2)));
+    });
+
+    test('several failures are summed into one exception', () async {
+      final http = RecordingClient(statuses: [400]);
+      final errors = <RudderStackException>[];
+      final analytics = _client(http, flushAt: 2, onError: errors.add);
+      _trackMany(analytics, 5);
+      await expectLater(
+        analytics.flush(),
+        throwsA(isA<RudderStackException>()
+            .having((e) => e.eventCount, 'eventCount', 5)
+            .having((e) => e.message, 'message', contains('3 deliveries'))),
+      );
+      expect(errors, hasLength(3));
+    });
+
+    test('retries connection errors', () async {
+      var calls = 0;
+      final analytics = _client(MockClient((request) async {
+        if (++calls < 3) throw http.ClientException('reset');
+        return http.Response('OK', 200);
+      }));
+      analytics.track(userId: 'u', event: 'E');
+      await analytics.flush();
+      expect(calls, 3);
+    });
+
+    test('reports a connection error after the last retry', () async {
+      var calls = 0;
+      final analytics = _client(
+        MockClient((request) async {
+          calls++;
+          throw http.ClientException('reset');
+        }),
+        retryCount: 1,
+      );
+      analytics.track(userId: 'u', event: 'E');
+      await expectLater(
+        analytics.flush(),
+        throwsA(isA<RudderStackException>()
+            .having((e) => e.statusCode, 'statusCode', isNull)
+            .having((e) => e.cause, 'cause', isA<http.ClientException>())),
+      );
+      expect(calls, 2);
+    });
+
+    test('does not retry a timeout', () async {
+      var calls = 0;
+      final analytics = _client(
+        MockClient((request) async {
+          calls++;
+          await Future<void>.delayed(const Duration(seconds: 1));
+          return http.Response('OK', 200);
+        }),
+        timeout: const Duration(milliseconds: 20),
+      );
+      analytics.track(userId: 'u', event: 'E');
+      await expectLater(
+        analytics.flush(),
+        throwsA(isA<RudderStackException>()
+            .having((e) => e.message, 'message', contains('timed out'))),
+      );
+      expect(calls, 1);
+    });
+
+    test('waits for a Retry-After longer than the backoff', () async {
+      final http = RecordingClient(
+          statuses: [429, 200], headers: {'retry-after': '0.2'});
+      final analytics = _client(http);
+      analytics.track(userId: 'u', event: 'E');
+      final stopwatch = Stopwatch()..start();
+      await analytics.flush();
+      expect(stopwatch.elapsedMilliseconds, greaterThanOrEqualTo(190));
+      expect(http.requests, hasLength(2));
+    });
+
+    test('drops events beyond maxQueueSize and reports them', () async {
+      final http = RecordingClient();
+      final errors = <RudderStackException>[];
+      final analytics = _client(http, maxQueueSize: 2, onError: errors.add);
+      _trackMany(analytics, 3);
+      expect(errors.single.message, contains('Dropped a "track" event'));
+      await expectLater(
+          analytics.flush(), throwsA(isA<RudderStackException>()));
+      expect(http.messages, hasLength(2));
+    });
+
+    test('an onError that throws does not stop delivery', () async {
+      final uncaught = <Object>[];
+      await runZonedGuarded(() async {
+        final http = RecordingClient(statuses: [400, 200]);
+        final analytics = _client(
+          http,
+          flushAt: 1,
+          onError: (_) => throw StateError('handler bug'),
+        );
+        _trackMany(analytics, 2);
+        await expectLater(
+            analytics.flush(), throwsA(isA<RudderStackException>()));
+        expect(http.requests, hasLength(2));
+      }, (error, _) => uncaught.add(error));
+      expect(uncaught.single, isA<StateError>());
+    });
+  });
+
+  group('lifecycle', () {
+    test('shutdown flushes, and later calls throw', () async {
+      final http = RecordingClient();
+      final analytics = _client(http);
+      _trackMany(analytics, 3);
+      await analytics.shutdown();
+      expect(http.messages, hasLength(3));
+      expect(() => analytics.track(userId: 'u', event: 'E'), throwsStateError);
+      expect(analytics.flush, throwsStateError);
+      await analytics.shutdown();
+    });
+
+    test('a disabled client validates but sends nothing', () async {
+      final http = RecordingClient();
+      final analytics = _client(http, enabled: false);
+      _trackMany(analytics, 3);
+      expect(() => analytics.track(event: 'E'), throwsArgumentError);
+      await analytics.flush();
+      expect(http.requests, isEmpty);
+    });
+  });
+
+  test('formatTimestamp matches Date.toJSON', () {
+    expect(formatTimestamp(DateTime.utc(7, 1, 2, 3, 4, 5, 6)),
+        '0007-01-02T03:04:05.006Z');
+    expect(formatTimestamp(DateTime.utc(2026, 12, 31, 23, 59, 59, 999, 999)),
+        '2026-12-31T23:59:59.999Z');
+  });
+
+  test('defaultRetryDelay doubles from 200 ms with up to 20 % jitter', () {
+    for (final (retry, base) in [(1, 200), (2, 400), (3, 800)]) {
+      final delay = defaultRetryDelay(retry).inMicroseconds / 1000;
+      expect(delay, inInclusiveRange(base, base * 1.2));
+    }
+  });
+}

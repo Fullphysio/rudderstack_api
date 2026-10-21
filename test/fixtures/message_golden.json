@@ -1,0 +1,455 @@
+{
+  "capturedFrom": "@rudderstack/rudder-sdk-node@3.0.3",
+  "cases": {
+    "identify": {
+      "type": "identify",
+      "input": {
+        "userId": "user-1",
+        "traits": {
+          "email": "jane@example.com",
+          "plan": "pro"
+        },
+        "context": {
+          "ip": "0.0.0.0"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/batch",
+        "headers": {
+          "authorization": "Basic dGVzdC13cml0ZS1rZXk6",
+          "content-encoding": "gzip",
+          "user-agent": "analytics-node/3.0.3"
+        },
+        "body": {
+          "batch": [
+            {
+              "userId": "user-1",
+              "traits": {
+                "email": "jane@example.com",
+                "plan": "pro"
+              },
+              "context": {
+                "ip": "0.0.0.0",
+                "traits": {
+                  "email": "jane@example.com",
+                  "plan": "pro"
+                },
+                "library": {
+                  "name": "analytics-node",
+                  "version": "3.0.3"
+                }
+              },
+              "type": "identify",
+              "channel": "server",
+              "_metadata": {
+                "nodeVersion": "24.12.0"
+              },
+              "originalTimestamp": "2026-10-21T09:22:07.053Z",
+              "messageId": "3ecf9e9f-d73e-4a7e-a88e-4fc15dfbe9b0",
+              "sentAt": "2026-10-21T09:22:07.054Z"
+            }
+          ],
+          "timestamp": "2026-10-21T09:22:07.054Z",
+          "sentAt": "2026-10-21T09:22:07.054Z"
+        }
+      }
+    },
+    "identify_context_traits_overridden": {
+      "type": "identify",
+      "input": {
+        "userId": "user-1",
+        "traits": {
+          "a": 1
+        },
+        "context": {
+          "traits": {
+            "b": 2
+          }
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/batch",
+        "headers": {
+          "authorization": "Basic dGVzdC13cml0ZS1rZXk6",
+          "content-encoding": "gzip",
+          "user-agent": "analytics-node/3.0.3"
+        },
+        "body": {
+          "batch": [
+            {
+              "userId": "user-1",
+              "traits": {
+                "a": 1
+              },
+              "context": {
+                "traits": {
+                  "a": 1
+                },
+                "library": {
+                  "name": "analytics-node",
+                  "version": "3.0.3"
+                }
+              },
+              "type": "identify",
+              "channel": "server",
+              "_metadata": {
+                "nodeVersion": "24.12.0"
+              },
+              "originalTimestamp": "2026-10-21T09:22:07.066Z",
+              "messageId": "8277d21d-7234-495e-bb39-c824896dc530",
+              "sentAt": "2026-10-21T09:22:07.066Z"
+            }
+          ],
+          "timestamp": "2026-10-21T09:22:07.066Z",
+          "sentAt": "2026-10-21T09:22:07.066Z"
+        }
+      }
+    },
+    "identify_anonymous": {
+      "type": "identify",
+      "input": {
+        "anonymousId": "anon-1"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/batch",
+        "headers": {
+          "authorization": "Basic dGVzdC13cml0ZS1rZXk6",
+          "content-encoding": "gzip",
+          "user-agent": "analytics-node/3.0.3"
+        },
+        "body": {
+          "batch": [
+            {
+              "anonymousId": "anon-1",
+              "type": "identify",
+              "context": {
+                "library": {
+                  "name": "analytics-node",
+                  "version": "3.0.3"
+                }
+              },
+              "channel": "server",
+              "_metadata": {
+                "nodeVersion": "24.12.0"
+              },
+              "originalTimestamp": "2026-10-21T09:22:07.069Z",
+              "messageId": "9b8e4b7d-9ff3-40b1-b5e8-21d4761f4589",
+              "sentAt": "2026-10-21T09:22:07.069Z"
+            }
+          ],
+          "timestamp": "2026-10-21T09:22:07.069Z",
+          "sentAt": "2026-10-21T09:22:07.069Z"
+        }
+      }
+    },
+    "track": {
+      "type": "track",
+      "input": {
+        "userId": "user-1",
+        "event": "Program Created",
+        "properties": {
+          "exercises": 3,
+          "tags": [
+            "knee",
+            "acl"
+          ],
+          "nested": {
+            "ok": true
+          },
+          "empty": null
+        },
+        "context": {
+          "traits": {
+            "role": "physio"
+          }
+        },
+        "integrations": {
+          "All": false,
+          "PostHog": true
+        },
+        "timestamp": "2026-01-31T09:05:03.042Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/batch",
+        "headers": {
+          "authorization": "Basic dGVzdC13cml0ZS1rZXk6",
+          "content-encoding": "gzip",
+          "user-agent": "analytics-node/3.0.3"
+        },
+        "body": {
+          "batch": [
+            {
+              "userId": "user-1",
+              "event": "Program Created",
+              "properties": {
+                "exercises": 3,
+                "tags": [
+                  "knee",
+                  "acl"
+                ],
+                "nested": {
+                  "ok": true
+                },
+                "empty": null
+              },
+              "context": {
+                "traits": {
+                  "role": "physio"
+                },
+                "library": {
+                  "name": "analytics-node",
+                  "version": "3.0.3"
+                }
+              },
+              "integrations": {
+                "All": false,
+                "PostHog": true
+              },
+              "timestamp": "2026-01-31T09:05:03.042Z",
+              "type": "track",
+              "channel": "server",
+              "_metadata": {
+                "nodeVersion": "24.12.0"
+              },
+              "originalTimestamp": "2026-10-21T09:22:07.071Z",
+              "messageId": "f182e32f-8cff-4e44-b2e8-1d50dbb5caf1",
+              "sentAt": "2026-10-21T09:22:07.071Z"
+            }
+          ],
+          "timestamp": "2026-10-21T09:22:07.071Z",
+          "sentAt": "2026-10-21T09:22:07.071Z"
+        }
+      }
+    },
+    "track_date_property": {
+      "type": "track",
+      "input": {
+        "userId": "user-1",
+        "event": "E",
+        "properties": {
+          "at": "2026-01-31T09:05:03.042Z"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/batch",
+        "headers": {
+          "authorization": "Basic dGVzdC13cml0ZS1rZXk6",
+          "content-encoding": "gzip",
+          "user-agent": "analytics-node/3.0.3"
+        },
+        "body": {
+          "batch": [
+            {
+              "userId": "user-1",
+              "event": "E",
+              "properties": {
+                "at": "2026-01-31T09:05:03.042Z"
+              },
+              "type": "track",
+              "context": {
+                "library": {
+                  "name": "analytics-node",
+                  "version": "3.0.3"
+                }
+              },
+              "channel": "server",
+              "_metadata": {
+                "nodeVersion": "24.12.0"
+              },
+              "originalTimestamp": "2026-10-21T09:22:07.073Z",
+              "messageId": "31d47255-e1a0-4ebf-88a7-50f9e8c73087",
+              "sentAt": "2026-10-21T09:22:07.073Z"
+            }
+          ],
+          "timestamp": "2026-10-21T09:22:07.073Z",
+          "sentAt": "2026-10-21T09:22:07.073Z"
+        }
+      }
+    },
+    "page": {
+      "type": "page",
+      "input": {
+        "userId": "user-1",
+        "name": "Home",
+        "category": "Docs",
+        "properties": {
+          "path": "/"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/batch",
+        "headers": {
+          "authorization": "Basic dGVzdC13cml0ZS1rZXk6",
+          "content-encoding": "gzip",
+          "user-agent": "analytics-node/3.0.3"
+        },
+        "body": {
+          "batch": [
+            {
+              "userId": "user-1",
+              "name": "Home",
+              "category": "Docs",
+              "properties": {
+                "path": "/"
+              },
+              "type": "page",
+              "context": {
+                "library": {
+                  "name": "analytics-node",
+                  "version": "3.0.3"
+                }
+              },
+              "channel": "server",
+              "_metadata": {
+                "nodeVersion": "24.12.0"
+              },
+              "originalTimestamp": "2026-10-21T09:22:07.074Z",
+              "messageId": "2cf67b8d-55c1-41d3-81af-ef2c8af316d8",
+              "sentAt": "2026-10-21T09:22:07.074Z"
+            }
+          ],
+          "timestamp": "2026-10-21T09:22:07.074Z",
+          "sentAt": "2026-10-21T09:22:07.074Z"
+        }
+      }
+    },
+    "screen": {
+      "type": "screen",
+      "input": {
+        "anonymousId": "anon-1",
+        "name": "Settings",
+        "properties": {
+          "tab": "billing"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/batch",
+        "headers": {
+          "authorization": "Basic dGVzdC13cml0ZS1rZXk6",
+          "content-encoding": "gzip",
+          "user-agent": "analytics-node/3.0.3"
+        },
+        "body": {
+          "batch": [
+            {
+              "anonymousId": "anon-1",
+              "name": "Settings",
+              "properties": {
+                "tab": "billing"
+              },
+              "type": "screen",
+              "context": {
+                "library": {
+                  "name": "analytics-node",
+                  "version": "3.0.3"
+                }
+              },
+              "channel": "server",
+              "_metadata": {
+                "nodeVersion": "24.12.0"
+              },
+              "originalTimestamp": "2026-10-21T09:22:07.075Z",
+              "messageId": "2c7f7de4-b75a-43fd-a565-7c5537611b6f",
+              "sentAt": "2026-10-21T09:22:07.075Z"
+            }
+          ],
+          "timestamp": "2026-10-21T09:22:07.075Z",
+          "sentAt": "2026-10-21T09:22:07.075Z"
+        }
+      }
+    },
+    "group": {
+      "type": "group",
+      "input": {
+        "userId": "user-1",
+        "groupId": "clinic-9",
+        "traits": {
+          "name": "Clinic"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/batch",
+        "headers": {
+          "authorization": "Basic dGVzdC13cml0ZS1rZXk6",
+          "content-encoding": "gzip",
+          "user-agent": "analytics-node/3.0.3"
+        },
+        "body": {
+          "batch": [
+            {
+              "userId": "user-1",
+              "groupId": "clinic-9",
+              "traits": {
+                "name": "Clinic"
+              },
+              "type": "group",
+              "context": {
+                "library": {
+                  "name": "analytics-node",
+                  "version": "3.0.3"
+                }
+              },
+              "channel": "server",
+              "_metadata": {
+                "nodeVersion": "24.12.0"
+              },
+              "originalTimestamp": "2026-10-21T09:22:07.076Z",
+              "messageId": "401309c8-45a2-4dc6-873b-1c44ce804c51",
+              "sentAt": "2026-10-21T09:22:07.076Z"
+            }
+          ],
+          "timestamp": "2026-10-21T09:22:07.076Z",
+          "sentAt": "2026-10-21T09:22:07.076Z"
+        }
+      }
+    },
+    "alias": {
+      "type": "alias",
+      "input": {
+        "userId": "user-1",
+        "previousId": "anon-1"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/batch",
+        "headers": {
+          "authorization": "Basic dGVzdC13cml0ZS1rZXk6",
+          "content-encoding": "gzip",
+          "user-agent": "analytics-node/3.0.3"
+        },
+        "body": {
+          "batch": [
+            {
+              "userId": "user-1",
+              "previousId": "anon-1",
+              "type": "alias",
+              "context": {
+                "library": {
+                  "name": "analytics-node",
+                  "version": "3.0.3"
+                }
+              },
+              "channel": "server",
+              "_metadata": {
+                "nodeVersion": "24.12.0"
+              },
+              "originalTimestamp": "2026-10-21T09:22:07.077Z",
+              "messageId": "cfcb1985-56f6-4232-b23f-18fcde656326",
+              "sentAt": "2026-10-21T09:22:07.077Z"
+            }
+          ],
+          "timestamp": "2026-10-21T09:22:07.077Z",
+          "sentAt": "2026-10-21T09:22:07.077Z"
+        }
+      }
+    }
+  }
+}

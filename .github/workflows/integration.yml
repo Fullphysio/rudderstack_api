@@ -1,0 +1,33 @@
+name: Integration
+
+# Sends real events to a RudderStack data plane. Kept off pull requests so an
+# upstream outage can never block a merge; it runs on main, nightly, and on
+# demand.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+env:
+  PUB_ENVIRONMENT: bot.github
+
+jobs:
+  live:
+    name: Live API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d
+        with:
+          sdk: stable
+      - run: dart pub get
+      - name: Run integration tests
+        env:
+          # Point these at a source dedicated to testing. The tests skip
+          # themselves when they are unset, so forks and contributors are never
+          # blocked.
+          RUDDERSTACK_TEST_WRITE_KEY: ${{ secrets.RUDDERSTACK_TEST_WRITE_KEY }}
+          RUDDERSTACK_TEST_DATA_PLANE_URL: ${{ vars.RUDDERSTACK_TEST_DATA_PLANE_URL }}
+        run: dart test --tags integration --run-skipped

@@ -1,0 +1,89 @@
+{
+  "capturedFrom": "@rudderstack/rudder-sdk-node@3.0.3",
+  "cases": {
+    "success": {
+      "statuses": [
+        200
+      ],
+      "attempts": 1,
+      "threw": false,
+      "sameMessageIdOnEveryAttempt": true
+    },
+    "500_then_success": {
+      "statuses": [
+        500,
+        200
+      ],
+      "attempts": 2,
+      "threw": false,
+      "sameMessageIdOnEveryAttempt": true
+    },
+    "503_exhausts_retries": {
+      "statuses": [
+        503,
+        503,
+        503,
+        503,
+        503
+      ],
+      "attempts": 4,
+      "threw": true,
+      "sameMessageIdOnEveryAttempt": true
+    },
+    "429_then_success": {
+      "statuses": [
+        429,
+        200
+      ],
+      "attempts": 2,
+      "threw": false,
+      "sameMessageIdOnEveryAttempt": true
+    },
+    "502_twice_then_success": {
+      "statuses": [
+        502,
+        502,
+        200
+      ],
+      "attempts": 3,
+      "threw": false,
+      "sameMessageIdOnEveryAttempt": true
+    },
+    "400_not_retried": {
+      "statuses": [
+        400,
+        200
+      ],
+      "attempts": 1,
+      "threw": true,
+      "sameMessageIdOnEveryAttempt": true
+    },
+    "401_not_retried": {
+      "statuses": [
+        401,
+        200
+      ],
+      "attempts": 1,
+      "threw": true,
+      "sameMessageIdOnEveryAttempt": true
+    },
+    "404_not_retried": {
+      "statuses": [
+        404,
+        200
+      ],
+      "attempts": 1,
+      "threw": true,
+      "sameMessageIdOnEveryAttempt": true
+    },
+    "413_not_retried": {
+      "statuses": [
+        413,
+        200
+      ],
+      "attempts": 1,
+      "threw": true,
+      "sameMessageIdOnEveryAttempt": true
+    }
+  }
+}

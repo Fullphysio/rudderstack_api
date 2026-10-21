@@ -1,0 +1,25 @@
+name: rudderstack_api
+description: >-
+  Pure Dart RudderStack server-side SDK: identify, track, page, screen, group
+  and alias, sent in gzip batches with retries. Runs on Dart servers, CLIs and
+  Flutter apps.
+version: 1.0.0
+repository: https://github.com/Fullphysio/rudderstack_api
+issue_tracker: https://github.com/Fullphysio/rudderstack_api/issues
+
+topics:
+  - rudderstack
+  - analytics
+  - tracking
+  - server
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  http: ^1.5.0
+  http_parser: ^4.0.2
+
+dev_dependencies:
+  lints: ^5.1.1
+  test: ^1.25.0

@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, to catch breakage from new SDK or dependency releases.
+    - cron: '0 6 * * 1'
+
+env:
+  PUB_ENVIRONMENT: bot.github
+
+jobs:
+  analyze:
+    name: Format & analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d
+        with:
+          sdk: stable
+      - id: install
+        run: dart pub get
+      - name: Check formatting
+        if: always() && steps.install.outcome == 'success'
+        run: dart format --output=none --set-exit-if-changed .
+      - name: Analyze
+        if: always() && steps.install.outcome == 'success'
+        run: dart analyze --fatal-infos
+      - name: Validate package layout
+        if: always() && steps.install.outcome == 'success'
+        run: dart pub publish --dry-run
+
+  test:
+    name: Test (Dart ${{ matrix.sdk }})
+    needs: analyze
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor declared in pubspec.yaml, plus current stable.
+        sdk: ['3.6', stable]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d
+        with:
+          sdk: ${{ matrix.sdk }}
+      - id: install
+        run: dart pub get
+      - name: Run tests
+        if: always() && steps.install.outcome == 'success'
+        run: dart test --test-randomize-ordering-seed=random
+
+  score:
+    name: pub.dev score
+    needs: analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      # pana evaluates Flutter platform support, so it needs the Flutter SDK
+      # to reproduce the score pub.dev will compute.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+      - run: dart pub global activate pana
+      - name: Score must stay at maximum
+        run: dart pub global run pana --no-warning --exit-code-threshold 0 .
