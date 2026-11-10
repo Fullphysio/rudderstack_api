@@ -1,0 +1,41 @@
+name: Bug report
+description: Something this package does differently from @rudderstack/rudder-sdk-node, or not at all.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: rudderstack_api version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: dart
+    attributes:
+      label: Dart SDK and platform
+      description: Output of `dart --version`, and where it runs (Cloud Run, Cloud Functions, CLI, Flutter…).
+      placeholder: Dart SDK version 3.9.0 (stable) on Cloud Functions
+    validations:
+      required: true
+  - type: textarea
+    id: call
+    attributes:
+      label: The call you made
+      description: A minimal snippet. Redact API keys and personal data.
+      render: dart
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: What happened
+      description: The exception message, HTTP status and response body, or what the RudderStack live events view shows.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: If you know what @rudderstack/rudder-sdk-node does here, say so; its behaviour is the reference.
+    validations:
+      required: true
