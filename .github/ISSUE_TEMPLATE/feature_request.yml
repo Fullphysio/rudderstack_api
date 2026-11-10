@@ -1,0 +1,21 @@
+name: Feature request
+description: A @rudderstack/rudder-sdk-node capability this package does not cover yet.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you need
+      description: The method or option, and what you would use it for.
+    validations:
+      required: true
+  - type: input
+    id: upstream
+    attributes:
+      label: @rudderstack/rudder-sdk-node equivalent
+      description: Method name or a link to its docs, if it exists there.
+      placeholder: client.track(...)
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround

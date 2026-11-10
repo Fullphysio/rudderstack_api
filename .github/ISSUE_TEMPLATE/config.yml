@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: RudderStack API reference
+    url: https://www.rudderstack.com/docs/api/http-api/
+    about: What the RudderStack API accepts and returns. Questions about RudderStack itself go to RudderStack support.
